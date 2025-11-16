@@ -22,5 +22,14 @@ import { PerformanceModule } from './performance/performance.module';
   ],
   controllers: [AppController],
   providers: [AppService],
+  exports: [
+    // Export all modules so other subsystems can import them
+    AuthModule,
+    UsersModule,
+    EmployeeProfileModule,
+    OrganizationStructureModule,
+    PerformanceModule,
+    DatabaseModule,
+  ],
 })
 export class AppModule {}

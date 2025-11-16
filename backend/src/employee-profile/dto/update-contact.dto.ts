@@ -1,16 +1,24 @@
 // src/employee-profile/dto/update-contact.dto.ts
-import { IsString, IsOptional, IsUrl } from 'class-validator';
+import { IsString, IsOptional, IsUrl, IsEmail } from 'class-validator';
 
 export class UpdateContactDto {
-  @IsOptional() @IsString()
-  phone?: string; // US-E2-05
+  @IsOptional()
+  @IsString()
+  phone?: string; // Was contactInfo.phone
 
-  @IsOptional() @IsString()
-  address?: string; // US-E2-05
+  @IsOptional()
+  @IsString()
+  address?: string; // Was contactInfo.address
 
-  @IsOptional() @IsString()
-  bio?: string; // US-E2-12
+  @IsOptional()
+  @IsEmail()
+  personalEmail?: string; // New field from BR 2o
 
-  @IsOptional() @IsUrl()
-  profilePictureUrl?: string; // US-E2-12
+  @IsOptional()
+  @IsString()
+  bio?: string;
+
+  @IsOptional()
+  @IsUrl()
+  profilePictureUrl?: string;
 }

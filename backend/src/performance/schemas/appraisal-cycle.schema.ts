@@ -2,10 +2,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
+export enum CycleStatus {
+  PENDING = 'Pending',   // Not started
+  ACTIVE = 'Active',     // Underway
+  CLOSED = 'Closed',     // Finished
+}
+
 @Schema({ timestamps: true })
-export class AppraisalCycle extends Document { // REQ-PP-02
+export class AppraisalCycle extends Document {
   @Prop({ required: true })
-  name: string; // e.g., "Annual Review 2025"
+  name: string; 
 
   @Prop({ required: true })
   startDate: Date;
@@ -15,5 +21,14 @@ export class AppraisalCycle extends Document { // REQ-PP-02
   
   @Prop({ type: Types.ObjectId, ref: 'AppraisalTemplate', required: true })
   template: Types.ObjectId;
+
+  // <-- IMPROVEMENT ---
+  @Prop({
+    type: String,
+    enum: CycleStatus,
+    default: CycleStatus.PENDING,
+    index: true,
+  })
+  status: CycleStatus;
 }
 export const AppraisalCycleSchema = SchemaFactory.createForClass(AppraisalCycle);
