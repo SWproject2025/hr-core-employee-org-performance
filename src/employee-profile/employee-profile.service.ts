@@ -1,113 +1,163 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Types } from 'mongoose';
-import { EmployeeProfile } from './models/employee-profile.schema';
+import { Model, Types } from 'mongoose';
+import { EmployeeProfile, EmployeeProfileDocument } from './models/employee-profile.schema';
 import { EmployeeProfileChangeRequest } from './models/ep-change-request.schema';
+import { AuditLog, AuditLogDocument } from './models/audit-log.schema'; // <-- Import Audit Log
 import { Candidate } from './models/candidate.schema';
 import { EmployeeSystemRole } from './models/employee-system-role.schema';
 import { EmployeeQualification } from './models/qualification.schema';
 import { ProfileChangeStatus } from './enums/employee-profile.enums';
+import { UpdateContactDto } from './dto/update-contact.dto';
 
 @Injectable()
 export class EmployeeProfileService {
   constructor(
-    @InjectModel(EmployeeProfile.name) private employeeProfileModel: Model<EmployeeProfile>,
+    @InjectModel(EmployeeProfile.name) private employeeProfileModel: Model<EmployeeProfileDocument>,
     @InjectModel(EmployeeProfileChangeRequest.name) private changeRequestModel: Model<EmployeeProfileChangeRequest>,
+    @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>, // <-- Inject Audit Model
     @InjectModel(Candidate.name) private candidateModel: Model<Candidate>,
     @InjectModel(EmployeeSystemRole.name) private systemRoleModel: Model<EmployeeSystemRole>,
     @InjectModel(EmployeeQualification.name) private qualificationModel: Model<EmployeeQualification>,
   ) {}
 
-  // 1. View Personal Profile (US-04)
+  // --- 1. Helper: Internal Audit Logging ---
+  private async logAction(
+    targetEmployeeId: string | Types.ObjectId,
+    action: string,
+    performedBy: string,
+    changes: Record<string, any>
+  ) {
+    const log = new this.auditLogModel({
+      targetEmployeeId: new Types.ObjectId(targetEmployeeId),
+      action,
+      performedBy, // ID of the user (Employee or Admin) performing the action
+      changes,
+      timestamp: new Date(),
+    });
+    await log.save();
+  }
+
+  // --- 2. View Personal Profile ---
   async getProfile(employeeId: string): Promise<EmployeeProfile> {
     const profile = await this.employeeProfileModel.findById(employeeId).exec();
     if (!profile) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
     return profile;
   }
 
-  // 2. Update Self-Service Data (Direct update for non-sensitive info like phone/address) (US-2.0)
-  async updateContactInfo(employeeId: string, updateData: Partial<EmployeeProfile>): Promise<EmployeeProfile> {
-    // Only allow specific fields to be updated directly
-    const allowedUpdates = ['phoneNumber', 'address', 'emergencyContact']; 
-    const filteredData = Object.keys(updateData)
-      .filter(key => allowedUpdates.includes(key))
-      .reduce((obj, key) => {
-        obj[key] = updateData[key];
-        return obj;
-      }, {});
-
-    if (Object.keys(filteredData).length === 0) {
+  // --- 3. Update Self-Service Data (With Audit) ---
+  // Added 'performedBy' to signature to track WHO did this
+  async updateContactInfo(
+    employeeId: string, 
+    updateDto: UpdateContactDto, 
+    performedBy: string
+  ): Promise<EmployeeProfile> {
+    if (Object.keys(updateDto).length === 0) {
       throw new BadRequestException('No valid contact information provided for update.');
     }
 
     const updated = await this.employeeProfileModel
-      .findByIdAndUpdate(employeeId, filteredData, { new: true })
+      .findByIdAndUpdate(employeeId, { $set: updateDto }, { new: true })
       .exec();
+      
     if (!updated) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
+
+    // LOG THE ACTION
+    await this.logAction(employeeId, 'SELF_UPDATE_CONTACT', performedBy, updateDto);
+
     return updated;
   }
 
-  // 3. Submit Request for Correction/Change (Sensitive Data)
-  async submitChangeRequest(employeeId: string, changes: any): Promise<EmployeeProfileChangeRequest> {
+  // --- 4. Submit Change Request ---
+  async submitChangeRequest(employeeId: string, changes: any, reason?: string): Promise<EmployeeProfileChangeRequest> {
     const newRequest = new this.changeRequestModel({
       requestId: new Types.ObjectId().toString(),
       employeeProfileId: new Types.ObjectId(employeeId),
       requestDescription: JSON.stringify(changes),
+      reason: reason,
       status: ProfileChangeStatus.PENDING,
       submittedAt: new Date(),
     });
     return newRequest.save();
   }
 
-  // 4. View Team Serial (Manager Insight)
-  async getTeamProfiles(managerId: string): Promise<EmployeeProfile[]> {
-    // Assuming EmployeeProfile has a 'managerId' or 'reportsTo' field
-    return this.employeeProfileModel.find({ managerId: managerId }).exec();
+  // --- 5. Manager View Team ---
+  async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
+    const managerProfile = await this.employeeProfileModel.findById(managerEmployeeId).exec();
+    if (!managerProfile || !managerProfile.primaryPositionId) {
+        throw new NotFoundException('Manager profile or position not found');
+    }
+    // Find employees reporting to this position
+    return this.employeeProfileModel.find({ 
+        supervisorPositionId: managerProfile.primaryPositionId 
+    }).exec();
   }
 
-  // 5. Review and Process Change Request: Approve
+  // --- 6. Approve Change Request (With Audit) ---
   async approveChangeRequest(requestId: string, reviewerId: string): Promise<EmployeeProfile> {
     const request = await this.changeRequestModel.findById(requestId);
     if (!request) throw new NotFoundException('Change request not found');
     if (request.status !== ProfileChangeStatus.PENDING) throw new BadRequestException('Request is already processed');
 
-    // Parse the changes from requestDescription
     const requestedChanges = JSON.parse(request.requestDescription);
 
-    // Apply changes to the actual profile
     const updatedProfile = await this.employeeProfileModel.findByIdAndUpdate(
-      request.employeeProfileId.toString(),
-      requestedChanges,
+      request.employeeProfileId,
+      { $set: requestedChanges },
       { new: true }
     ).exec();
 
-    if (!updatedProfile) throw new NotFoundException(`Employee profile with ID ${request.employeeProfileId} not found`);
+    if (!updatedProfile) throw new NotFoundException(`Employee profile not found`);
 
-    // Update request status
     request.status = ProfileChangeStatus.APPROVED;
     request.processedAt = new Date();
     await request.save();
 
+    // LOG THE ACTION
+    await this.logAction(
+      request.employeeProfileId, 
+      'APPROVE_CHANGE_REQUEST', 
+      reviewerId, 
+      requestedChanges
+    );
+
     return updatedProfile;
   }
 
-  // 6. Review and Process Change Request: Reject
+  // --- 7. Reject Change Request ---
   async rejectChangeRequest(requestId: string, reviewerId: string): Promise<EmployeeProfileChangeRequest> {
     const request = await this.changeRequestModel.findById(requestId);
     if (!request) throw new NotFoundException('Change request not found');
     
     request.status = ProfileChangeStatus.REJECTED;
     request.processedAt = new Date();
+    
+    // Optional: Log rejection as well
+    await this.logAction(
+        request.employeeProfileId, 
+        'REJECT_CHANGE_REQUEST', 
+        reviewerId, 
+        { requestId: requestId }
+    );
+
     return request.save();
   }
 
-  // 7. Master Data Management (HR Admin Full Update)
-  async adminUpdateProfile(employeeId: string, updateData: any): Promise<EmployeeProfile> {
+  // --- 8. Master Data Management (HR Admin Full Update - With Audit) ---
+  async adminUpdateProfile(
+    employeeId: string, 
+    updateData: any, 
+    adminId: string
+  ): Promise<EmployeeProfile> {
     const updated = await this.employeeProfileModel
-      .findByIdAndUpdate(employeeId, updateData, { new: true })
+      .findByIdAndUpdate(employeeId, { $set: updateData }, { new: true })
       .exec();
+
     if (!updated) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
+
+    // LOG THE ACTION
+    await this.logAction(employeeId, 'ADMIN_UPDATE_MASTER_DATA', adminId, updateData);
+
     return updated;
   }
 }
