@@ -47,8 +47,9 @@ describe('EmployeeProfileController', () => {
   describe('updateContactInfo', () => {
     it('should call service.updateContactInfo', async () => {
       const dto = { phoneNumber: '123456' };
-      await controller.updateContactInfo('123', dto);
-      expect(service.updateContactInfo).toHaveBeenCalledWith('123', dto);
+      const req = { user: { userId: '123' } };
+      await controller.updateContactInfo('123', dto, req);
+      expect(service.updateContactInfo).toHaveBeenCalledWith('123', dto, '123');
     });
   });
 
@@ -61,8 +62,22 @@ describe('EmployeeProfileController', () => {
 
   describe('getTeam', () => {
     it('should call service.getTeamProfiles', async () => {
-      await controller.getTeam('manager1');
-      expect(service.getTeamProfiles).toHaveBeenCalledWith('manager1');
+      await controller.getTeam('managerId');
+      expect(service.getTeamProfiles).toHaveBeenCalledWith('managerId');
+    });
+  });
+
+  describe('adminUpdate', () => {
+    it('should call service.adminUpdateProfile with admin ID', async () => {
+      const id = 'emp-1';
+      const dto = { department: 'IT' };
+      const req = { user: { userId: 'admin-user' } };
+
+      mockEmployeeService.adminUpdateProfile.mockResolvedValue('updated-profile');
+
+      await controller.adminUpdate(id, dto, req);
+
+      expect(service.adminUpdateProfile).toHaveBeenCalledWith(id, dto, 'admin-user');
     });
   });
 });
