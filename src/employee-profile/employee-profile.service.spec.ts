@@ -1,82 +1,65 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { EmployeeProfileController } from './employee-profile.controller';
+import { getModelToken } from '@nestjs/mongoose';
 import { EmployeeProfileService } from './employee-profile.service';
-import { UpdateContactDto } from './dto/update-contact.dto';
-import { CreateChangeRequestDto } from './dto/change-request.dto';
+import { EmployeeProfile } from './models/employee-profile.schema';
+import { EmployeeProfileChangeRequest } from './models/ep-change-request.schema';
+import { Candidate } from './models/candidate.schema';
+import { EmployeeSystemRole } from './models/employee-system-role.schema';
+import { EmployeeQualification } from './models/qualification.schema';
 
-describe('EmployeeProfileController', () => {
-  let controller: EmployeeProfileController;
+// 1. Generic Mock Factory
+const mockModel = () => ({
+  constructor: jest.fn(),
+  find: jest.fn(),
+  findById: jest.fn(),
+  findByIdAndUpdate: jest.fn(),
+  save: jest.fn(),
+  exec: jest.fn(),
+});
+
+describe('EmployeeProfileService', () => {
   let service: EmployeeProfileService;
-
-  // Mock the Service
-  const mockService = {
-    getProfile: jest.fn(),
-    updateContactInfo: jest.fn(),
-    submitChangeRequest: jest.fn(),
-    getTeamProfiles: jest.fn(),
-    approveChangeRequest: jest.fn(),
-    rejectChangeRequest: jest.fn(),
-    adminUpdateProfile: jest.fn(),
-  };
+  let employeeModel: any;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [EmployeeProfileController],
       providers: [
-        { provide: EmployeeProfileService, useValue: mockService },
+        EmployeeProfileService,
+        // Provide Mocks for all injected Models
+        { provide: getModelToken(EmployeeProfile.name), useFactory: mockModel },
+        { provide: getModelToken(EmployeeProfileChangeRequest.name), useFactory: mockModel },
+        // AuditLog mock removed
+        { provide: getModelToken(Candidate.name), useFactory: mockModel },
+        { provide: getModelToken(EmployeeSystemRole.name), useFactory: mockModel },
+        { provide: getModelToken(EmployeeQualification.name), useFactory: mockModel },
       ],
     }).compile();
 
-    controller = module.get<EmployeeProfileController>(EmployeeProfileController);
     service = module.get<EmployeeProfileService>(EmployeeProfileService);
+    employeeModel = module.get(getModelToken(EmployeeProfile.name));
   });
 
   it('should be defined', () => {
-    expect(controller).toBeDefined();
+    expect(service).toBeDefined();
   });
 
-  describe('updateContactInfo', () => {
-    it('should call service.updateContactInfo with correct parameters', async () => {
-      const id = 'emp-1';
-      const dto: UpdateContactDto = { phoneNumber: '123456789' };
-      // FIX: Create a mock request object
-      const mockReq = { user: { userId: 'user-1' } }; 
-
-      mockService.updateContactInfo.mockResolvedValue('updated-profile');
-
-      // FIX: Pass mockReq as the 3rd argument
-      await controller.updateContactInfo(id, dto, mockReq);
-
-      expect(service.updateContactInfo).toHaveBeenCalledWith(id, dto, 'user-1');
+  it('should update contact info', async () => {
+    const empId = '64f1b2b8e3b9c8a1b2c3d4e5'; 
+    const updateDto = { phoneNumber: '555-0199' };
+    
+    // Mock the Profile Update to succeed
+    employeeModel.findByIdAndUpdate.mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ _id: empId, ...updateDto }),
     });
-  });
 
-  describe('adminUpdate', () => {
-    it('should call service.adminUpdateProfile with admin ID', async () => {
-      const id = 'emp-1';
-      const dto = { department: 'IT' };
-      // FIX: Create a mock request object for Admin
-      const mockReq = { user: { userId: 'admin-user' } };
+    // Call the method
+    await service.updateContactInfo(empId, updateDto);
 
-      mockService.adminUpdateProfile.mockResolvedValue('updated-profile');
-
-      // FIX: Pass mockReq as the 3rd argument
-      await controller.adminUpdate(id, dto, mockReq);
-
-      expect(service.adminUpdateProfile).toHaveBeenCalledWith(id, dto, 'admin-user');
-    });
-  });
-
-  describe('submitChangeRequest', () => {
-    it('should call service.submitChangeRequest', async () => {
-      const id = 'emp-1';
-      const dto: CreateChangeRequestDto = { changes: { address: 'New Place' }, reason: 'Moved' };
-
-      mockService.submitChangeRequest.mockResolvedValue('request-submitted');
-
-      await controller.submitChangeRequest(id, dto);
-
-      expect(service.submitChangeRequest).toHaveBeenCalledWith(id, dto.changes, dto.reason);
-    });
+    // Assert: Profile was updated
+    expect(employeeModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      empId, 
+      { $set: updateDto }, 
+      { new: true }
+    );
   });
 });
