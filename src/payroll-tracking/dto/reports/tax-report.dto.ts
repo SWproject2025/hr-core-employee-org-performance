@@ -1,4 +1,4 @@
-import { IsOptional, IsDateString, IsInt, Min, Max, IsEnum } from 'class-validator';
+import { IsOptional,IsString, IsDateString, IsInt, Min, Max, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ReportFormat } from './payroll-report.dto';
 
