@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+
 import { TimeManagementModule } from './time-management/time-management.module';
 import { RecruitmentModule } from './recruitment/recruitment.module';
 import { LeavesModule } from './leaves/leaves.module';
-
 import { PayrollTrackingModule } from './payroll-tracking/payroll-tracking.module';
 import { EmployeeProfileModule } from './employee-profile/employee-profile.module';
 import { OrganizationStructureModule } from './organization-structure/organization-structure.module';
@@ -13,7 +15,23 @@ import { PayrollConfigurationModule } from './payroll-configuration/payroll-conf
 import { PayrollExecutionModule } from './payroll-execution/payroll-execution.module';
 
 @Module({
-  imports: [TimeManagementModule, RecruitmentModule, LeavesModule, PayrollExecutionModule, PayrollConfigurationModule, PayrollTrackingModule, EmployeeProfileModule, OrganizationStructureModule, PerformanceModule],
+  imports: [
+    // 🔗 Global MongoDB connection (needed for NotificationLogModel, etc.)
+    MongooseModule.forRoot(
+      process.env.MONGO_URI ??
+        'mongodb://127.0.0.1:27017/hr-core-employee-org-performance',
+    ),
+
+    TimeManagementModule,
+    RecruitmentModule,
+    LeavesModule,
+    PayrollExecutionModule,
+    PayrollConfigurationModule,
+    PayrollTrackingModule,
+    EmployeeProfileModule,
+    OrganizationStructureModule,
+    PerformanceModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
