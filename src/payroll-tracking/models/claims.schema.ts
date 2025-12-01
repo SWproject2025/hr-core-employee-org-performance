@@ -22,14 +22,20 @@ export class claims {
     @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Employee.name })
     financeStaffId?: mongoose.Types.ObjectId;
 
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Employee.name })
+    payrollSpecialistId?: mongoose.Types.ObjectId;
+
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Employee.name })
+    payrollManagerId?: mongoose.Types.ObjectId;
+
     @Prop({ required: true })
     amount: number;
 
     @Prop({})
-    approvedAmountr?: number;
+    approvedAmount?: number;
 
     @Prop({ required: true, type: String, enum: ClaimStatus, default: ClaimStatus.UNDER_REVIEW })
-    status: ClaimStatus;// under review, approved, rejected
+    status: ClaimStatus;// under review,pending_manager_approval, approved, rejected
 
     @Prop()
     rejectionReason?: string;
