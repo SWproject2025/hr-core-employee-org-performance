@@ -2,6 +2,8 @@ import { forwardRef, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PayrollExecutionController } from './payroll-execution.controller';
 import { PayrollExecutionService } from './payroll-execution.service';
+import {CalcDraftController} from '../calc-draft/calc-draft.contoller.ts';
+import {CalcDraftService} from '../calc-draft/calc-draft.service.ts';
 import { terminationAndResignationBenefits, terminationAndResignationBenefitsSchema } from '../payroll-configuration/models/terminationAndResignationBenefits';
 import { employeePayrollDetails, employeePayrollDetailsSchema } from './models/employeePayrollDetails.schema';
 import { employeePenalties, employeePenaltiesSchema } from './models/employeePenalties.schema';
@@ -25,8 +27,8 @@ import { LeavesModule } from '../leaves/leaves.module';
     { name: employeePenalties.name, schema: employeePenaltiesSchema },
 
   ])],
-  controllers: [PayrollExecutionController],
-  providers: [PayrollExecutionService],
-  exports: [PayrollExecutionService]
+  controllers: [PayrollExecutionController, CalcDraftController],
+  providers: [PayrollExecutionService, CalcDraftService], 
+  exports: [PayrollExecutionService, CalcDraftService]
 })
 export class PayrollExecutionModule { }
