@@ -19,6 +19,10 @@ export enum AppraisalAssignmentStatus {
   SUBMITTED = 'SUBMITTED',
   PUBLISHED = 'PUBLISHED',
   ACKNOWLEDGED = 'ACKNOWLEDGED',
+
+  // Added for dispute + final closure handling
+  UNDER_DISPUTE = 'UNDER_DISPUTE',
+  FINALIZED = 'FINALIZED',
 }
 
 export enum AppraisalRecordStatus {

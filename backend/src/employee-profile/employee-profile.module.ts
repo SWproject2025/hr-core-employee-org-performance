@@ -35,5 +35,6 @@ import {
   ],
   controllers: [EmployeeProfileController],
   providers: [EmployeeProfileService],
+  exports: [EmployeeProfileService, MongooseModule], // Exported for other subsystems
 })
 export class EmployeeProfileModule {}
