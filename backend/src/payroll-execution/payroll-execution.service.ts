@@ -61,6 +61,26 @@ export class PayrollExecutionService {
     signingBonus.status = BonusStatus.APPROVED;
     return await signingBonus.save();
   }
+  // Add to PayrollExecutionService
+async getAllPayrollRuns(filters?: any) {
+  const query: any = {};
+  
+  if (filters?.status) query.status = filters.status;
+  if (filters?.entity) query.entity = filters.entity;
+  if (filters?.startDate || filters?.endDate) {
+    query.payrollPeriod = {};
+    if (filters.startDate) query.payrollPeriod.$gte = new Date(filters.startDate);
+    if (filters.endDate) query.payrollPeriod.$lte = new Date(filters.endDate);
+  }
+
+  return await this.payrollRunsModel
+    .find(query)
+    .populate('payrollSpecialistId', 'firstName lastName email')
+    .populate('payrollManagerId', 'firstName lastName email')
+    .populate('financeStaffId', 'firstName lastName email')
+    .sort({ createdAt: -1 })
+    .exec();
+}
 
   async rejectSigningBonus(id: string) {
     const signingBonus = await this.employeeSigningBonusModel.findById(id);
@@ -444,6 +464,7 @@ export class PayrollExecutionService {
     await run.save();
     return { message: 'Payroll run locked', runId: run.runId };
   }
+  
 
   async unfreezePayroll(runId: string, unlockReason?: string) {
     const runObjectId = await this._resolveRunObjectId(runId);

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { PayrollExecutionService } from './payroll-execution.service';
 import { EditSigningBonusDto } from './dto/editSigningBonusDto'; 
 import { EditBenefitDto } from './dto/editBenefitDto';
@@ -202,6 +202,8 @@ export class PayrollExecutionController {
     return await this.payrollExecutionService.rejectByFinanceStaff(runId, body.reason, body.approverId);
   }
 
+  @Get('payroll-runs')
+@Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
   @Patch('payroll-runs/:runId/freeze')
   @Roles(SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
   async freezePayroll(
@@ -210,6 +212,15 @@ export class PayrollExecutionController {
   ) {
     return await this.payrollExecutionService.freezePayroll(runId, body.reason);
   }
+
+  // Add to PayrollExecutionController
+@Get('payroll-runs')
+@Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
+async getAllPayrollRuns(
+  @Query() filters?: { status?: string; entity?: string; startDate?: string; endDate?: string }
+) {
+  return await this.payrollExecutionService.getAllPayrollRuns(filters);
+}
 
   @Patch('payroll-runs/:runId/unfreeze')
   @Roles(SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
