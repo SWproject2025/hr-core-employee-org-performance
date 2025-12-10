@@ -7,46 +7,42 @@ import { ApprovePayrollPeriodDto } from './dto/approvePayrollPeriodDto';
 import { RejectPayrollPeriodDto } from './dto/rejectPayrollPeriodDto';
 import { EditPayrollPeriodDto } from './dto/editPayrollPeriodDto';
 import { StartPayrollInitiationDto } from './dto/startPayrollInitiationDto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard'; 
+import { RolesGuard } from '../Common/Gaurds/roles.gaurd';
+import { Roles } from '../Common/Decorators/roles.decorator';
+import { SystemRole } from '../employee-profile/enums/employee-profile.enums'; 
 
 @Controller('payroll-execution')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard) // Fixed: Apply both guards at class level
 export class PayrollExecutionController {
   constructor(private readonly payrollExecutionService: PayrollExecutionService) {}
 
   @Get('signing-bonuses/pending')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST) // Fixed: Use enum instead of string
   async getPendingSigningBonuses() {
     return await this.payrollExecutionService.getPendingSigningBonuses();
   }
 
   @Get('signing-bonuses/:id')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async getSigningBonusById(@Param('id') id: string) {
     return await this.payrollExecutionService.getSigningBonusById(id);
   }
 
   @Patch('signing-bonuses/:id/approve')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async approveSigningBonus(@Param('id') id: string) {
     return await this.payrollExecutionService.approveSigningBonus(id);
   }
 
   @Patch('signing-bonuses/:id/reject')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async rejectSigningBonus(@Param('id') id: string) {
     return await this.payrollExecutionService.rejectSigningBonus(id);
   }
 
   @Patch('signing-bonuses/:id/edit')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async editSigningBonus(
     @Param('id') id: string,
     @Body() editSigningBonusDto: EditSigningBonusDto,
@@ -59,36 +55,31 @@ export class PayrollExecutionController {
   }
 
   @Get('benefits/pending')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async getPendingBenefits() {
     return await this.payrollExecutionService.getPendingBenefits();
   }
 
   @Get('benefits/:id')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async getBenefitById(@Param('id') id: string) {
     return await this.payrollExecutionService.getBenefitById(id);
   }
 
   @Patch('benefits/:id/approve')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async approveBenefit(@Param('id') id: string) {
     return await this.payrollExecutionService.approveBenefit(id);
   }
 
   @Patch('benefits/:id/reject')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async rejectBenefit(@Param('id') id: string) {
     return await this.payrollExecutionService.rejectBenefit(id);
   }
 
   @Patch('benefits/:id/edit')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async editBenefit(
     @Param('id') id: string,
     @Body() editBenefitDto: EditBenefitDto,
@@ -97,15 +88,13 @@ export class PayrollExecutionController {
   }
 
   @Get('payroll-period/suggested')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async getSuggestedPayrollPeriod() {
     return await this.payrollExecutionService.getSuggestedPayrollPeriod();
   }
 
   @Post('payroll-period/validate')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async validatePayrollPeriod(@Body() validatePayrollPeriodDto: ValidatePayrollPeriodDto) {
     return await this.payrollExecutionService.validatePayrollPeriod(
       validatePayrollPeriodDto.payrollPeriod,
@@ -113,15 +102,13 @@ export class PayrollExecutionController {
   }
 
   @Get('payroll-runs/:id')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST', 'PAYROLL_MANAGER')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
   async getPayrollRunById(@Param('id') id: string) {
     return await this.payrollExecutionService.getPayrollRunById(id);
   }
 
   @Patch('payroll-runs/:id/approve')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_MANAGER')
+  @Roles(SystemRole.PAYROLL_MANAGER)
   async approvePayrollPeriod(
     @Param('id') id: string,
     @Body() approvePayrollPeriodDto: ApprovePayrollPeriodDto,
@@ -133,8 +120,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:id/reject')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_MANAGER')
+  @Roles(SystemRole.PAYROLL_MANAGER)
   async rejectPayrollPeriod(
     @Param('id') id: string,
     @Body() rejectPayrollPeriodDto: RejectPayrollPeriodDto,
@@ -146,8 +132,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:id/edit')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async editPayrollPeriod(
     @Param('id') id: string,
     @Body() editPayrollPeriodDto: EditPayrollPeriodDto,
@@ -159,8 +144,7 @@ export class PayrollExecutionController {
   }
 
   @Post('payroll-runs/start')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async startPayrollInitiation(@Body() startPayrollInitiationDto: StartPayrollInitiationDto) {
     return await this.payrollExecutionService.startPayrollInitiation(
       startPayrollInitiationDto.runId,
@@ -171,22 +155,19 @@ export class PayrollExecutionController {
   }
 
   @Get('pre-run-check')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async checkPreRunApprovalsComplete() {
     return await this.payrollExecutionService.checkPreRunApprovalsComplete();
   }
 
   @Patch('payroll-runs/:runId/publish')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async publishDraftForApproval(@Param('runId') runId: string) {
     return await this.payrollExecutionService.publishDraftForApproval(runId);
   }
 
   @Patch('payroll-runs/:runId/manager-approve')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_MANAGER')
+  @Roles(SystemRole.PAYROLL_MANAGER)
   async approveByPayrollManager(
     @Param('runId') runId: string,
     @Body() body: { approverId?: string },
@@ -195,8 +176,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:runId/manager-reject')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_MANAGER')
+  @Roles(SystemRole.PAYROLL_MANAGER)
   async rejectByPayrollManager(
     @Param('runId') runId: string,
     @Body() body: { reason: string; approverId?: string },
@@ -205,8 +185,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:runId/finance-approve')
-  @UseGuards(RolesGuard)
-  @Roles('FINANCE_STAFF')
+  @Roles(SystemRole.FINANCE_STAFF)
   async approveByFinanceStaff(
     @Param('runId') runId: string,
     @Body() body: { approverId?: string },
@@ -215,8 +194,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:runId/finance-reject')
-  @UseGuards(RolesGuard)
-  @Roles('FINANCE_STAFF')
+  @Roles(SystemRole.FINANCE_STAFF)
   async rejectByFinanceStaff(
     @Param('runId') runId: string,
     @Body() body: { reason: string; approverId?: string },
@@ -225,8 +203,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:runId/freeze')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_MANAGER', 'FINANCE_STAFF')
+  @Roles(SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
   async freezePayroll(
     @Param('runId') runId: string,
     @Body() body: { reason?: string },
@@ -235,8 +212,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:runId/unfreeze')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_MANAGER', 'FINANCE_STAFF')
+  @Roles(SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
   async unfreezePayroll(
     @Param('runId') runId: string,
     @Body() body: { unlockReason?: string },
@@ -245,15 +221,13 @@ export class PayrollExecutionController {
   }
 
   @Get('payroll-runs/:runId/approvals')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST', 'PAYROLL_MANAGER', 'FINANCE_STAFF')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
   async getApprovalsByRunId(@Param('runId') runId: string) {
     return await this.payrollExecutionService.getApprovalsByRunId(runId);
   }
 
   @Post('payroll-runs/:runId/adjustments')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async createPayrollAdjustment(
     @Param('runId') runId: string,
     @Body() body: { employeeId: string; type: 'bonus' | 'deduction' | 'benefit'; amount: number; reason?: string },
@@ -268,8 +242,7 @@ export class PayrollExecutionController {
   }
 
   @Patch('payroll-runs/:runId/exceptions/:employeeId/resolve')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async resolveException(
     @Param('runId') runId: string,
     @Param('employeeId') employeeId: string,
@@ -279,57 +252,49 @@ export class PayrollExecutionController {
   }
 
   @Post('payroll-runs/:runId/payslips/generate')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async generatePayslips(@Param('runId') runId: string) {
     return await this.payrollExecutionService.generatePayslips(runId);
   }
 
   @Patch('payroll-runs/:runId/payslips/distribute')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async distributePayslips(@Param('runId') runId: string) {
     return await this.payrollExecutionService.distributePayslips(runId);
   }
 
   @Patch('payroll-runs/:runId/mark-paid')
-  @UseGuards(RolesGuard)
-  @Roles('FINANCE_STAFF')
+  @Roles(SystemRole.FINANCE_STAFF)
   async markPayrollAsPaid(@Param('runId') runId: string) {
     return await this.payrollExecutionService.markPayrollAsPaid(runId);
   }
 
   @Post('payroll-runs/:runId/exceptions/flag')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async flagPayrollExceptions(@Param('runId') runId: string) {
     return await this.payrollExecutionService.flagPayrollExceptions(runId);
   }
 
   @Get('payroll-runs/:runId/exceptions')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST', 'PAYROLL_MANAGER')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
   async getPayrollRunExceptions(@Param('runId') runId: string) {
     return await this.payrollExecutionService.getPayrollRunExceptions(runId);
   }
 
   @Get('payroll-runs/:runId/review/draft')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_SPECIALIST')
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async reviewPayrollDraft(@Param('runId') runId: string) {
     return await this.payrollExecutionService.reviewPayrollDraft(runId);
   }
 
   @Get('payroll-runs/:runId/review/manager')
-  @UseGuards(RolesGuard)
-  @Roles('PAYROLL_MANAGER')
+  @Roles(SystemRole.PAYROLL_MANAGER)
   async getPayrollForManagerReview(@Param('runId') runId: string) {
     return await this.payrollExecutionService.getPayrollForManagerReview(runId);
   }
 
   @Get('payroll-runs/:runId/review/finance')
-  @UseGuards(RolesGuard)
-  @Roles('FINANCE_STAFF')
+  @Roles(SystemRole.FINANCE_STAFF)
   async getPayrollForFinanceReview(@Param('runId') runId: string) {
     return await this.payrollExecutionService.getPayrollForFinanceReview(runId);
   }
