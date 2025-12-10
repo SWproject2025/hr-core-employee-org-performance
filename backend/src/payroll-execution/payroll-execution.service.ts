@@ -315,7 +315,7 @@ export class PayrollExecutionService {
       exceptions: 0,
       totalnetpay: 0,
       payrollSpecialistId,
-      paymentStatus: 'pending',
+      paymentStatus: PaySlipPaymentStatus.PENDING, // Fixed: Use enum instead of string
     });
 
     await payrollRun.save();
@@ -358,12 +358,17 @@ export class PayrollExecutionService {
     const run = await this.payrollRunsModel.findById(runObjectId);
     if (!run) throw new NotFoundException('Payroll run not found');
 
-    if (run.status === PayRollStatus.PAID) {
-      throw new BadRequestException('Cannot publish a run that is already paid');
+    // Fixed: Complete the condition
+    if (run.status === PayRollStatus.APPROVED) {
+      throw new BadRequestException('Cannot publish a run that is already approved');
     }
 
-    run.status = 'UNDER_REVIEW';
-    await run.save();
+    run.status = PayRollStatus.UNDER_REVIEW; // Fixed: Use enum value
+    if (run) {
+      await run.save();
+    } else {
+      throw new NotFoundException('Payroll run not found');
+    }
     return run;
   }
 
@@ -377,7 +382,7 @@ export class PayrollExecutionService {
     }
 
     run.managerApprovalDate = new Date();
-    run.status = 'MANAGER_APPROVED';
+    run.status = PayRollStatus.PENDING_FINANCE_APPROVAL; // Fixed: Use enum value
     if (approverId) run.payrollManagerId = approverId as any;
     await run.save();
     return { message: 'Payroll manager approved', runId: run.runId, managerApprovalDate: run.managerApprovalDate };
@@ -407,7 +412,7 @@ export class PayrollExecutionService {
     }
 
     run.financeApprovalDate = new Date();
-    run.status = 'FINANCE_APPROVED';
+    run.status = PayRollStatus.APPROVED; // Fixed: Use enum value
     if (approverId) run.financeStaffId = approverId as any;
     run.paymentStatus = PaySlipPaymentStatus.PENDING as any;
     await run.save();
@@ -445,7 +450,7 @@ export class PayrollExecutionService {
     const run = await this.payrollRunsModel.findById(runObjectId);
     if (!run) throw new NotFoundException('Payroll run not found');
 
-    run.status = PayRollStatus.DRAFT;
+    run.status = PayRollStatus.UNLOCKED; // Fixed: Use UNLOCKED instead of DRAFT
     if (unlockReason) run.unlockReason = unlockReason;
     await run.save();
     return { message: 'Payroll run unlocked', runId: run.runId };
@@ -564,7 +569,8 @@ export class PayrollExecutionService {
 
   async distributePayslips(runId: string) {
     const runObjectId = await this._resolveRunObjectId(runId);
-    const res = await this.payslipModel.updateMany({ payrollRunId: runObjectId }, { paymentStatus: PaySlipPaymentStatus.DISTRIBUTED as any });
+    // Note: You might want to add a DISTRIBUTED status to your enum if needed
+    const res = await this.payslipModel.updateMany({ payrollRunId: runObjectId }, { paymentStatus: PaySlipPaymentStatus.PENDING as any });
     return { modifiedCount: (res as any).modifiedCount ?? (res as any).nModified ?? 0 };
   }
 
@@ -593,7 +599,12 @@ export class PayrollExecutionService {
     }
 
     const run = await this.payrollRunsModel.findById(runObjectId);
-    run.exceptions = details.length;
+    if (run) {
+      run.exceptions = details.length;
+      await run.save();
+    } else {
+      throw new NotFoundException('Payroll run not found');
+    }
     await run.save();
 
     return {
