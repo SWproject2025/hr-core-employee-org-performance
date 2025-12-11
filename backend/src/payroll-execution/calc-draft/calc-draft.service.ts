@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { CreateCalcDraftDto } from './dto/create-calc-draft.dto';
 import { UpdateCalcDraftDto } from './dto/update-calc-draft.dto';
-import { payrollRuns, payrollRunsDocument } from '../schemas/payrollRuns.schema';
-import { employeePayrollDetails, employeePayrollDetailsDocument } from '../schemas/employeePayrollDetails.schema';
-import { employeePenalties, employeePenaltiesDocument } from '../schemas/employeePenalties.schema';
-import { paySlip, paySlipDocument } from '../schemas/paySlip.schema';
-import { employeeSigningBonus, employeeSigningBonusDocument } from '../schemas/employeeSigningBonus.schema';
-import { EmployeeTerminationResignation, EmployeeTerminationResignationDocument } from '../schemas/EmployeeTerminationResignation.schema';
+import { payrollRuns, payrollRunsDocument } from '../models/payrollRuns.schema';
+import { employeePayrollDetails, employeePayrollDetailsDocument } from '../models/employeePayrollDetails.schema';
+import { employeePenalties, employeePenaltiesDocument } from '../models/employeePenalties.schema';
+import { paySlip, PayslipDocument } from '../models/payslip.schema';
+import { employeeSigningBonus, employeeSigningBonusDocument } from '../models/EmployeeSigningBonus.schema';
+import { EmployeeTerminationResignation, EmployeeTerminationResignationDocument } from '../models/EmployeeTerminationResignation.schema';
 import { InjectModel } from '@nestjs/mongoose';
 import mongoose, { Model } from 'mongoose';
 import { PayRollStatus, PayRollPaymentStatus, BankStatus, BonusStatus, BenefitStatus, PaySlipPaymentStatus } from '../enums/payroll-execution-enum';
@@ -17,7 +17,7 @@ export class CalcDraftService {
     @InjectModel(payrollRuns.name) private payrollRunsModel: Model<payrollRunsDocument>,
     @InjectModel(employeePayrollDetails.name) private employeePayrollDetailsModel: Model<employeePayrollDetailsDocument>,
     @InjectModel(employeePenalties.name) private employeePenaltiesModel: Model<employeePenaltiesDocument>,
-    @InjectModel(paySlip.name) private paySlipModel: Model<paySlipDocument>,
+    @InjectModel(paySlip.name) private paySlipModel: Model<PayslipDocument>,
     @InjectModel(employeeSigningBonus.name) private employeeSigningBonusModel: Model<employeeSigningBonusDocument>,
     @InjectModel(EmployeeTerminationResignation.name) private employeeTerminationResignationModel: Model<EmployeeTerminationResignationDocument>,
   ){}
@@ -260,7 +260,7 @@ export class CalcDraftService {
       {
         status,
         updatedAt: new Date(),
-        ...(status === PayRollStatus.COMPLETED && { completedAt: new Date() })
+        ...(status === PayRollStatus.APPROVED && { completedAt: new Date() })
       },
       { new: true }
     );
@@ -321,7 +321,7 @@ export class CalcDraftService {
           employees: employeeData.length,
           exceptions: exceptionsCount,
           totalnetpay: Number(totalNetPay.toFixed(2)),
-          status: exceptionsCount > 0 ? PayRollStatus.REVIEW_NEEDED : PayRollStatus.READY_FOR_APPROVAL,
+          status: exceptionsCount > 0 ? PayRollStatus.UNDER_REVIEW : PayRollStatus.PENDING_FINANCE_APPROVAL,
           updatedAt: new Date(),
         },
         { new: true }
@@ -340,7 +340,7 @@ export class CalcDraftService {
       await this.payrollRunsModel.findByIdAndUpdate(
         payrollRunId,
         {
-          status: PayRollStatus.FAILED,
+          status: PayRollStatus.REJECTED,
           rejectionReason: error.message,
           updatedAt: new Date(),
         }
