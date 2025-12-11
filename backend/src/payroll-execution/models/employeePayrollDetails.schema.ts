@@ -10,6 +10,7 @@ export type employeePayrollDetailsDocument = HydratedDocument<employeePayrollDet
 
 @Schema({ timestamps: true })
 export class employeePayrollDetails {
+    [x: string]: any;
     @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Employee.name, required: true })
     employeeId: mongoose.Types.ObjectId;
     @Prop({ required: true })
