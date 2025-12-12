@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent } from "@/components/calc-darft-ui/card"
+import { Card, CardContent } from "@/components/calc-draft-ui/card"
 import { Users, DollarSign, Wallet, AlertTriangle } from "lucide-react"
 
 interface SummaryCardsProps {

@@ -1,7 +1,7 @@
 "use client"
 
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/calc-draft-ui/sheet"
-import { Badge } from "@/components/calc-darft-ui/badge"
+import { Badge } from "@/components/calc-draft-ui/badge"
 import { AlertCircle } from "lucide-react"
 
 interface EmployeeDetailDrawerProps {

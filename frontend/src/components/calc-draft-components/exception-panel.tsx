@@ -1,10 +1,10 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/calc-darft-ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/calc-draft-ui/card"
 import { Badge } from "@/components/calc-draft-ui/badge"
 import { AlertCircle, ChevronRight } from "lucide-react"
 import Link from "next/link"
-import { Button } from "@/components/calc-darft-ui/button"
+import { Button } from "@/components/calc-draft-ui/button"
 
 interface ExceptionPanelProps {
   exceptions: any[]

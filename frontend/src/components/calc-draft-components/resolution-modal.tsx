@@ -8,11 +8,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/calc-darft-ui/dialog"
-import { Button } from "@/components/calc-darft-ui/button"
-import { Input } from "@/components/calc-darft-ui/input"
-import { Label } from "@/components/calc-darft-ui/label"
-import { Textarea } from "@/components/calc-darft-ui/textarea"
+} from "@/components/calc-draft-ui/dialog"
+import { Button } from "@/components/calc-draft-ui/button"
+import { Input } from "@/components/calc-draft-ui/input"
+import { Label } from "@/components/calc-draft-ui/label"
+import { Textarea } from "@/components/calc-draft-ui/textarea"
 
 interface ResolutionModalProps {
   isOpen: boolean

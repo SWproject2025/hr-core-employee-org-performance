@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/calc-draft-ui/table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/calc-draft-ui/card"
-import { Button } from "@/components/calc-darft-ui/button"
+import { Button } from "@/components/calc-draft-ui/button"
 import { ChevronDown, ChevronUp, AlertCircle } from "lucide-react"
 import EmployeeDetailDrawer from "./employee-detail-drawer"
 

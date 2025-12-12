@@ -2,8 +2,8 @@
 
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/calc-draft-ui/card"
-import { Button } from "@/components/calc-darft-ui/button"
-import { Badge } from "@/components/calc-darft-ui/badge"
+import { Button } from "@/components/calc-draft-ui/button"
+import { Badge } from "@/components/calc-draft-ui/badge"
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 
 const STAGES = [
