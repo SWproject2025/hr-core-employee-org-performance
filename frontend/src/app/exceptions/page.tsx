@@ -2,67 +2,16 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/card"
-import { Input } from "@/components/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/select"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/calc-darft-ui/card"
+import { Input } from "@/components/calc-darft-ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/calc-darft-ui/select"
 import { Search, Filter, AlertTriangle, ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import ExceptionList from "@/components/exception-list"
-import ResolutionModal from "@/components/resolution-modal"
-import { Button } from "@/components/button"
+import ExceptionList from "@/components/calc-darft-components/exception-list"
+import ResolutionModal from "@/components/calc-darft-components/resolution-modal"
+import { Button } from "@/components/calc-darft-ui/button"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
-
-const MOCK_RUNS = [
-  {
-    _id: "507f1f77bcf86cd799439011",
-    runId: "PR-2025-1234",
-    payrollPeriodStart: "2025-01-01",
-    payrollPeriodEnd: "2025-01-31",
-  },
-]
-
-const MOCK_EXCEPTIONS = [
-  {
-    _id: "exc_1",
-    employeeId: "507f1f77bcf86cd799439012",
-    employeeName: "John Doe",
-    employeeCode: "EMP001",
-    payrollRunId: "507f1f77bcf86cd799439011",
-    runId: "PR-2025-1234",
-    type: "MISSING_BANK_DETAILS",
-    severity: "MEDIUM",
-    description: "Employee John Doe (EMP001) has missing or incomplete bank details",
-    status: "open",
-    createdAt: "2025-01-15T10:00:00Z",
-  },
-  {
-    _id: "exc_2",
-    employeeId: "507f1f77bcf86cd799439013",
-    employeeName: "Jane Smith",
-    employeeCode: "EMP002",
-    payrollRunId: "507f1f77bcf86cd799439011",
-    runId: "PR-2025-1234",
-    type: "ZERO_BASE_SALARY",
-    severity: "HIGH",
-    description: "Employee Jane Smith (EMP002) has zero or missing base salary",
-    status: "open",
-    createdAt: "2025-01-15T10:00:00Z",
-  },
-  {
-    _id: "exc_3",
-    employeeId: "507f1f77bcf86cd799439014",
-    employeeName: "Bob Johnson",
-    employeeCode: "EMP003",
-    payrollRunId: "507f1f77bcf86cd799439011",
-    runId: "PR-2025-1234",
-    type: "EXCESSIVE_PENALTIES",
-    severity: "HIGH",
-    description: "Employee Bob Johnson (EMP003) has penalties exceeding 50% of gross salary",
-    status: "in-progress",
-    createdAt: "2025-01-15T10:00:00Z",
-  },
-]
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
 
 type ExceptionType =
   | "all"
@@ -85,14 +34,12 @@ export default function ExceptionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Filters
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState<ExceptionType>("all")
   const [statusFilter, setStatusFilter] = useState<ExceptionStatus>("all")
   const [runFilter, setRunFilter] = useState(runIdFromUrl || "all")
   const [runs, setRuns] = useState<any[]>([])
 
-  // Modal
   const [selectedException, setSelectedException] = useState<any>(null)
   const [showModal, setShowModal] = useState(false)
 
@@ -102,55 +49,38 @@ export default function ExceptionsPage() {
         setLoading(true)
         setError(null)
 
-        console.log("[v0] Loading exceptions with mock data for demo")
+        const runsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs`)
+        let runsData: any[] = []
+        if (runsResponse.ok) {
+          runsData = await runsResponse.json()
+          if (!Array.isArray(runsData)) {
+            runsData = []
+          }
+        }
+        setRuns(runsData)
 
-        setRuns(MOCK_RUNS)
-        setExceptions(MOCK_EXCEPTIONS)
-
-        console.log("[v0] Loaded mock runs:", MOCK_RUNS)
-        console.log("[v0] Loaded mock exceptions:", MOCK_EXCEPTIONS)
-
-        setLoading(false)
-
-        // Uncomment below to use real API when backend is connected
-        /*
-        try {
-          const runsResponse = await axios.get(`${API_URL}/payroll-execution/payroll-runs`)
-          const runsData = runsResponse.data || []
-          setRuns(runsData)
-          console.log("[v0] Runs fetched:", runsData)
-
-          // Fetch exceptions for all runs
-          const allExceptions: any[] = []
+        const allExceptions: any[] = []
+        if (runsData.length > 0) {
           for (const run of runsData) {
             try {
-              const exceptionsResponse = await axios.get(
-                `${API_URL}/payroll-execution/payroll-runs/${run._id}/exceptions`,
-              )
-              if (exceptionsResponse.data) {
-                allExceptions.push(...exceptionsResponse.data)
+              const exceptionsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${run._id}/exceptions`)
+              if (exceptionsResponse.ok) {
+                const data = await exceptionsResponse.json()
+                if (Array.isArray(data)) {
+                  allExceptions.push(...data)
+                } else if (data && typeof data === "object") {
+                  allExceptions.push(data)
+                }
               }
             } catch (err) {
-              console.log("[v0] Error fetching exceptions for run:", run._id, err)
+              console.error("[v0] Error fetching exceptions for run:", run._id, err)
             }
           }
-          setExceptions(allExceptions)
-          console.log("[v0] All exceptions fetched:", allExceptions)
-        } catch (err) {
-          console.log("[v0] Error fetching runs:", err)
-          setRuns([])
-          setExceptions([])
         }
-        */
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to load exceptions"
-        setError(message)
-        console.log("[v0] Error:", message)
-        toast({
-          title: "Error",
-          description: message,
-          variant: "destructive",
-        })
+        setExceptions(allExceptions)
+        setLoading(false)
+      } catch (err: any) {
+        console.log("[v0] API not available:", err.message)
         setLoading(false)
       }
     }
@@ -161,8 +91,8 @@ export default function ExceptionsPage() {
   const filteredExceptions = useMemo(() => {
     return exceptions.filter((exc) => {
       const matchesSearch =
-        exc.employeeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        exc.runId?.toLowerCase().includes(searchQuery.toLowerCase())
+        (exc.employeeName && exc.employeeName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (exc.runId && exc.runId.toLowerCase().includes(searchQuery.toLowerCase()))
 
       const matchesType = typeFilter === "all" || exc.type === typeFilter
       const matchesStatus = statusFilter === "all" || exc.status === statusFilter
@@ -182,41 +112,37 @@ export default function ExceptionsPage() {
       const runId = selectedException.payrollRunId
       const employeeId = selectedException.employeeId
 
-      console.log("[v0] Resolving exception for employee:", employeeId, "in run:", runId)
-
-      // Mock resolution
-      setExceptions((prev) =>
-        prev.map((exc) =>
-          exc._id === selectedException._id
-            ? { ...exc, status: "resolved", resolutionNote: resolution.resolutionNote }
-            : exc,
-        ),
+      const response = await fetch(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions/${employeeId}/resolve`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resolutionNote: resolution.resolutionNote || "",
+          }),
+        },
       )
+
+      if (!response.ok) throw new Error("Failed to resolve exception")
 
       toast({
         title: "Success",
         description: "Exception resolved successfully",
       })
 
+      const exceptionsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions`)
+      if (exceptionsResponse.ok) {
+        const data = await exceptionsResponse.json()
+        if (Array.isArray(data)) {
+          setExceptions(data)
+        }
+      }
+
       setShowModal(false)
       setSelectedException(null)
-
-      // Uncomment when backend is ready
-      /*
-      await axios.patch(
-        `${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions/${employeeId}/resolve`,
-        {
-          resolutionNote: resolution.resolutionNote || "",
-        }
-      )
-      
-      // Refetch exceptions
-      const response = await axios.get(`${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions`)
-      setExceptions(response.data)
-      */
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to resolve exception"
-      console.log("[v0] Resolution error:", message)
+    } catch (err: any) {
+      const message = err.message || "Failed to resolve exception"
+      console.error("[v0] Resolution error:", message)
       setError(message)
       toast({
         title: "Error",
@@ -235,7 +161,6 @@ export default function ExceptionsPage() {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      {/* Header */}
       <div className="mb-8">
         {draftIdFromUrl && (
           <Button
@@ -261,7 +186,6 @@ export default function ExceptionsPage() {
         </Card>
       )}
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Card>
           <CardHeader className="pb-3">
@@ -297,7 +221,6 @@ export default function ExceptionsPage() {
         </Card>
       </div>
 
-      {/* Filters */}
       <Card className="mb-8">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -362,7 +285,7 @@ export default function ExceptionsPage() {
                   <SelectItem value="all">All Runs</SelectItem>
                   {runs.map((run) => (
                     <SelectItem key={run._id} value={run._id}>
-                      {run.runId}
+                      {run.runId || run._id}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -372,10 +295,8 @@ export default function ExceptionsPage() {
         </CardContent>
       </Card>
 
-      {/* Exception List */}
       <ExceptionList exceptions={filteredExceptions} loading={loading} onResolve={handleResolve} />
 
-      {/* Resolution Modal */}
       {selectedException && (
         <ResolutionModal
           isOpen={showModal}
