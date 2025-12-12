@@ -33,6 +33,18 @@ export const Sidebar = () => {
       ]
     },
     {
+  id: 'payroll-runs',
+  icon: Play,
+  label: 'Payroll Runs',
+  submenu: [
+    { id: 'all-runs', label: 'All Runs', path: '/all-runs/runs' },
+    { id: 'approvals', label: 'Approvals', path: '/approvals/[id]' }, // New
+    { id: 'payslips', label: 'Finalized Payslips', path: '/payslips' }, // New
+    { id: 'exceptions', label: 'Exceptions', path: '/exceptions' },
+    { id: 'bank-files', label: 'Bank Files', path: '/bank-files' } // New
+  ]
+},
+    {
       id: 'employee-portal',
       icon: User,
       label: 'Employee Portal',
