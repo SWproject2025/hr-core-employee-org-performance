@@ -13,11 +13,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { LeavesService } from './leaves.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { CurrentUserData } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../Common/Gaurds/roles.gaurd';
+import { Roles } from '../Common/Decorators/roles.decorator';
+import { CurrentUser } from '../Common/Decorators/current-user.decorator';
+import type { CurrentUserData } from '../Common/Decorators/current-user.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums';
 import {
   CreateLeaveRequestDto,

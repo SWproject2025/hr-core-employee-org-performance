@@ -281,7 +281,7 @@ export class OrganizationStructureService {
     const jobReq = new this.jobReqModel({
       jobTitle: dto.jobTitle,
       departmentId: departmentObjectId,
-      positionId: position._id,
+      positionId: (position as any)._id,
       location: dto.location,
       openings: dto.openings,
       qualifications: dto.qualifications ?? [],
@@ -308,7 +308,7 @@ export class OrganizationStructureService {
 
     if (dto.positionId) {
       const position = await this.ensureActivePosition(dto.positionId);
-      jobReq.positionId = position._id;
+     jobReq.positionId = (position as any)._id;
 
       if (dto.departmentId) {
         // already validated via ensureActiveDepartment
