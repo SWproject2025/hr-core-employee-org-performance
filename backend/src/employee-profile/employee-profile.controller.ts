@@ -12,6 +12,12 @@ export class EmployeeProfileController {
     return this.employeeProfileService.getProfile(id);
   }
 
+  @Get('me')
+  async getMyProfile(@Req() req: any) {
+    const userId = req?.user?.userId;
+    return this.employeeProfileService.getProfileWithRole(userId);
+  }
+
   @Put(':id/contact')
   async updateContactInfo(
     @Param('id') id: string,
@@ -19,6 +25,13 @@ export class EmployeeProfileController {
     @Req() req: any,
   ) {
     return this.employeeProfileService.updateContactInfo(id, dto);
+  }
+
+  @Put('me/password')
+  async changeMyPassword(@Body() body: any, @Req() req: any) {
+    const userId = req?.user?.userId;
+    const { oldPassword, newPassword } = body;
+    return this.employeeProfileService.changePassword(userId, oldPassword, newPassword);
   }
 
   @Post(':id/change-request')
@@ -41,7 +54,6 @@ export class EmployeeProfileController {
   @Post('change-request/:requestId/approve')
   async approveRequest(
     @Param('requestId') requestId: string,
-    @Param('adminId') adminId: string,
   ) {
     return this.employeeProfileService.approveChangeRequest(requestId);
   }

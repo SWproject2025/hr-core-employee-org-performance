@@ -311,9 +311,9 @@ const PreRunApprovalsPage = () => {
                 selectedItems={selectedItems}
                 onToggleSelect={toggleSelectItem}
                 onSelectAll={selectAll}
-                onApprove={(id) => handleApprove(id, 'bonus')}
-                onReject={(id) => handleReject(id, 'bonus')}
-                onEdit={(item) => openEditModal(item, 'bonus')}
+                onApprove={(id: string) => handleApprove(id, 'bonus')}
+                onReject={(id: string) => handleReject(id, 'bonus')}
+                onEdit={(item: any) => openEditModal(item, 'bonus')}
               />
             ) : (
               <BenefitsTable
@@ -321,9 +321,9 @@ const PreRunApprovalsPage = () => {
                 selectedItems={selectedItems}
                 onToggleSelect={toggleSelectItem}
                 onSelectAll={selectAll}
-                onApprove={(id) => handleApprove(id, 'benefit')}
-                onReject={(id) => handleReject(id, 'benefit')}
-                onEdit={(item) => openEditModal(item, 'benefit')}
+                onApprove={(id: string) => handleApprove(id, 'benefit')}
+                onReject={(id: string) => handleReject(id, 'benefit')}
+                onEdit={(item: any) => openEditModal(item, 'benefit')}
               />
             )}
           </div>

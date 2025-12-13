@@ -14,8 +14,17 @@ export class AuthService {
 
   // 1. Validate User Credentials
   async validateUser(email: string, pass: string): Promise<any> {
+    // Allow login by personalEmail, workEmail or nationalId
     // Explicitly select password since it's hidden by default
-    const user = await this.employeeModel.findOne({ email }).select('+password');
+    const user = await this.employeeModel
+      .findOne({
+        $or: [
+          { personalEmail: email },
+          { workEmail: email },
+          { nationalId: email },
+        ],
+      })
+      .select('+password');
     
     if (user && user.password && (await bcrypt.compare(pass, user.password))) {
       const { password, ...result } = user.toObject();

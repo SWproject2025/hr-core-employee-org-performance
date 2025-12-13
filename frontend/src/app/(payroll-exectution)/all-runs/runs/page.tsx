@@ -4,12 +4,12 @@ import { Search, Plus, Trash2, Eye, Calendar, X, Building2, User, Loader2, Check
 
 // Mock payrollService
 const payrollService = {
-  getAllPayrollRuns: async (filters) => {
+  getAllPayrollRuns: async (filters: any) => {
     const response = await fetch(`http://localhost:3000/payroll-execution/payroll-runs?${new URLSearchParams(filters)}`);
     if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   },
-  createPayrollRun: async (data) => {
+  createPayrollRun: async (data: any) => {
     const response = await fetch('http://localhost:3000/payroll-execution/payroll-runs/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -21,7 +21,7 @@ const payrollService = {
     }
     return response.json();
   },
-  deletePayrollRun: async (id) => {
+  deletePayrollRun: async (id: string) => {
     const response = await fetch(`http://localhost:3000/payroll-execution/payroll-runs/${id}`, {
       method: 'DELETE'
     });
@@ -30,7 +30,7 @@ const payrollService = {
   }
 };
 
-const CreateRunModal = ({ onClose, onSuccess }) => {
+const CreateRunModal = ({ onClose, onSuccess }: any) => {
   const [formData, setFormData] = useState({
     runId: `PR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`,
     payrollPeriod: '',
@@ -39,7 +39,7 @@ const CreateRunModal = ({ onClose, onSuccess }) => {
   });
   
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   const generateNewRunId = () => {
     setFormData({
@@ -65,7 +65,7 @@ const CreateRunModal = ({ onClose, onSuccess }) => {
       });
       
       onSuccess();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating payroll run:', err);
       setError(err.message || 'Failed to create payroll run. Please check console for details.');
     } finally {
@@ -236,13 +236,13 @@ const AllRunsPage = () => {
     searchTerm: ''
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [notification, setNotification] = useState(null);
+  const [notification, setNotification] = useState<{ message: string; type: string } | null>(null);
 
   useEffect(() => {
     fetchPayrollRuns();
   }, [filters.status, filters.entity]);
 
-  const showNotification = (message, type = 'success') => {
+  const showNotification = (message: string, type: string = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 5000);
   };
@@ -257,13 +257,13 @@ const AllRunsPage = () => {
       
       let filteredData = data;
       if (filters.searchTerm) {
-        filteredData = data.filter(run => 
+        filteredData = data.filter((run: any) => 
           run.runId.toLowerCase().includes(filters.searchTerm.toLowerCase())
         );
       }
       
       setRuns(filteredData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching payroll runs:', error);
       showNotification('Failed to fetch payroll runs: ' + (error.message || 'Unknown error'), 'error');
     } finally {
@@ -271,25 +271,25 @@ const AllRunsPage = () => {
     }
   };
 
-  const handleDeleteRun = async (runId) => {
+  const handleDeleteRun = async (runId: string) => {
     if (!window.confirm('Are you sure you want to delete this payroll run?')) return;
     
     try {
       await payrollService.deletePayrollRun(runId);
       showNotification('Payroll run deleted successfully');
       fetchPayrollRuns();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting run:', error);
       showNotification(error.message || 'Failed to delete payroll run', 'error');
     }
   };
 
-  const handleViewPreRun = (runId) => {
+  const handleViewPreRun = (runId: string) => {
     window.location.href = `/all-runs/runs/${runId}/pre-runs`;
   };
 
-  const getStatusBadge = (status) => {
-    const colors = {
+  const getStatusBadge = (status: string) => {
+    const colors: { [key: string]: string } = {
       'draft': 'bg-gray-200 text-gray-800',
       'under review': 'bg-yellow-200 text-yellow-800',
       'pending finance approval': 'bg-orange-200 text-orange-800',
@@ -410,7 +410,7 @@ const AllRunsPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {runs.map((run) => (
+                  {runs.map((run: any) => (
                     <tr key={run._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{run.runId}</td>
                       <td className="px-6 py-4">

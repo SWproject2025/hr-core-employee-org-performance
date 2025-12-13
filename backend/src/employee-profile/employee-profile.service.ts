@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { EmployeeProfile, EmployeeProfileDocument } from './models/employee-profile.schema';
@@ -115,5 +116,36 @@ export class EmployeeProfileService {
     if (!updated) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
 
     return updated;
+  }
+
+  // --- 8. Get profile with role (for 'me' endpoint) ---
+  async getProfileWithRole(employeeId: string): Promise<any> {
+    const profile = await this.employeeProfileModel.findById(employeeId).lean().exec();
+    if (!profile) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
+
+    const roleDoc = await this.systemRoleModel.findOne({ employeeProfileId: employeeId }).lean().exec();
+
+    return {
+      profile,
+      role: roleDoc || null,
+    };
+  }
+
+  // --- 9. Change password ---
+  async changePassword(employeeId: string, oldPassword: string | undefined, newPassword: string): Promise<boolean> {
+    const user = await this.employeeProfileModel.findById(employeeId).select('+password').exec();
+    if (!user) throw new NotFoundException('User not found');
+
+    // If oldPassword provided, verify it
+    if (oldPassword) {
+      if (!user.password || !(await bcrypt.compare(oldPassword, user.password))) {
+        throw new ForbiddenException('Current password is incorrect');
+      }
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    user.password = hashed;
+    await user.save();
+    return true;
   }
 }

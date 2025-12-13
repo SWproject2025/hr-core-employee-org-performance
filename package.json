@@ -19,6 +19,9 @@
   },
   "homepage": "https://github.com/SWproject2025/hr-main#readme",
   "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
     "lucide-react": "^0.561.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
