@@ -1,9 +1,8 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Trash2, Eye, Calendar } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Search, Plus, Trash2, Eye, Calendar, X, Building2, User, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
-// Mock payrollService for demonstration
+// Mock payrollService
 const payrollService = {
   getAllPayrollRuns: async (filters) => {
     const response = await fetch(`http://localhost:3000/payroll-execution/payroll-runs?${new URLSearchParams(filters)}`);
@@ -16,7 +15,10 @@ const payrollService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    if (!response.ok) throw new Error('Failed to create');
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to create');
+    }
     return response.json();
   },
   deletePayrollRun: async (id) => {
@@ -28,6 +30,203 @@ const payrollService = {
   }
 };
 
+const CreateRunModal = ({ onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    runId: `PR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`,
+    payrollPeriod: '',
+    payrollSpecialistId: '',
+    entity: ''
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const generateNewRunId = () => {
+    setFormData({
+      ...formData,
+      runId: `PR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`
+    });
+  };
+
+  const handleSubmit = async () => {
+    // Validation
+    if (!formData.runId || !formData.payrollPeriod || !formData.entity || !formData.payrollSpecialistId) {
+      setError('Please fill in all required fields');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await payrollService.createPayrollRun({
+        ...formData,
+        payrollPeriod: new Date(formData.payrollPeriod).toISOString()
+      });
+      
+      onSuccess();
+    } catch (err) {
+      console.error('Error creating payroll run:', err);
+      setError(err.message || 'Failed to create payroll run. Please check console for details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Create Payroll Run</h2>
+            <p className="text-gray-600 text-sm mt-1">Initialize a new payroll processing cycle</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition"
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="text-red-600 mt-0.5 flex-shrink-0" size={20} />
+            <div className="flex-1">
+              <p className="font-semibold text-red-900">Error</p>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-5">
+          {/* Run ID */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Run ID *
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={formData.runId}
+                onChange={(e) => setFormData({ ...formData, runId: e.target.value })}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="PR-2024-1234"
+              />
+              <button
+                type="button"
+                onClick={generateNewRunId}
+                className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium"
+              >
+                Generate
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Unique identifier for this payroll run</p>
+          </div>
+
+          {/* Payroll Period */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <Calendar className="inline mr-1" size={16} />
+              Payroll Period *
+            </label>
+            <input
+              type="date"
+              value={formData.payrollPeriod}
+              onChange={(e) => setFormData({ ...formData, payrollPeriod: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">End date of the payroll period</p>
+          </div>
+
+          {/* Entity */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <Building2 className="inline mr-1" size={16} />
+              Entity/Company *
+            </label>
+            <input
+              type="text"
+              value={formData.entity}
+              onChange={(e) => setFormData({ ...formData, entity: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Acme Corporation"
+            />
+            <p className="text-xs text-gray-500 mt-1">Legal entity or company name</p>
+          </div>
+
+          {/* Payroll Specialist ID */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <User className="inline mr-1" size={16} />
+              Payroll Specialist ID *
+            </label>
+            <input
+              type="text"
+              value={formData.payrollSpecialistId}
+              onChange={(e) => setFormData({ ...formData, payrollSpecialistId: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+              placeholder="675c8e9a1b2c3d4e5f6a7b8c"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              MongoDB ObjectId of the employee (24-character hex string)
+            </p>
+          </div>
+
+          {/* Help Sections */}
+          <div className="space-y-3 pt-2">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <h3 className="font-semibold text-blue-900 text-sm mb-2">📋 Prerequisites</h3>
+              <ul className="text-xs text-blue-800 space-y-1">
+                <li>• Ensure you have active employees in the database</li>
+                <li>• All pending signing bonuses must be approved</li>
+                <li>• All termination benefits must be approved</li>
+                <li>• No overlapping payroll runs for the same period</li>
+              </ul>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <h3 className="font-semibold text-amber-900 text-sm mb-2">💡 Quick Tip</h3>
+              <p className="text-xs text-amber-800">
+                To get an employee's ObjectId, run this in MongoDB:
+                <code className="block mt-1 p-2 bg-white rounded font-mono text-xs">
+                  db.employee_profiles.findOne({'{'}employeeNumber: "EMP001"{'}'})._id
+                </code>
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 font-medium transition shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin" size={18} />
+                  Creating...
+                </>
+              ) : (
+                'Create Payroll Run'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AllRunsPage = () => {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,10 +236,16 @@ const AllRunsPage = () => {
     searchTerm: ''
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     fetchPayrollRuns();
   }, [filters.status, filters.entity]);
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 5000);
+  };
 
   const fetchPayrollRuns = async () => {
     try {
@@ -60,7 +265,7 @@ const AllRunsPage = () => {
       setRuns(filteredData);
     } catch (error) {
       console.error('Error fetching payroll runs:', error);
-      toast.error('Failed to fetch payroll runs: ' + (error.message || 'Unknown error'));
+      showNotification('Failed to fetch payroll runs: ' + (error.message || 'Unknown error'), 'error');
     } finally {
       setLoading(false);
     }
@@ -71,11 +276,11 @@ const AllRunsPage = () => {
     
     try {
       await payrollService.deletePayrollRun(runId);
-      toast.success('Payroll run deleted successfully');
+      showNotification('Payroll run deleted successfully');
       fetchPayrollRuns();
     } catch (error) {
       console.error('Error deleting run:', error);
-      toast.error(error.message || 'Failed to delete payroll run');
+      showNotification(error.message || 'Failed to delete payroll run', 'error');
     }
   };
 
@@ -103,11 +308,29 @@ const AllRunsPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Notification */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center gap-3 ${
+            notification.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+          }`}>
+            {notification.type === 'success' ? (
+              <CheckCircle className="text-green-600" size={20} />
+            ) : (
+              <AlertCircle className="text-red-600" size={20} />
+            )}
+            <p className={`text-sm font-medium ${
+              notification.type === 'success' ? 'text-green-900' : 'text-red-900'
+            }`}>
+              {notification.message}
+            </p>
+          </div>
+        )}
+
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-gray-800">All Payroll Runs</h1>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition shadow-md"
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 hover:from-blue-700 hover:to-indigo-700 transition shadow-lg hover:shadow-xl"
           >
             <Plus size={20} />
             Create New Run
@@ -243,109 +466,11 @@ const AllRunsPage = () => {
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => {
             setShowCreateModal(false);
+            showNotification('Payroll run created successfully!');
             fetchPayrollRuns();
           }}
         />
       )}
-    </div>
-  );
-};
-
-const CreateRunModal = ({ onClose, onSuccess }) => {
-  const [formData, setFormData] = useState({
-    runId: `PR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`,
-    payrollPeriod: '',
-    payrollSpecialistId: '693d1ae98187544b541daec4', // Pre-filled with test employee ID
-    entity: ''
-  });
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async () => {
-    if (!formData.runId || !formData.payrollPeriod || !formData.entity || !formData.payrollSpecialistId) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-    
-    setLoading(true);
-    
-    try {
-      await payrollService.createPayrollRun(formData);
-      toast.success('Payroll run created successfully');
-      onSuccess();
-    } catch (error) {
-      console.error('Error creating run:', error);
-      toast.error(error.message || 'Failed to create payroll run');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
-        <h3 className="text-2xl font-bold mb-6 text-gray-800">Create New Payroll Run</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Run ID</label>
-            <input
-              type="text"
-              value={formData.runId}
-              onChange={(e) => setFormData({ ...formData, runId: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Payroll Period</label>
-            <input
-              type="date"
-              value={formData.payrollPeriod}
-              onChange={(e) => setFormData({ ...formData, payrollPeriod: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Entity</label>
-            <input
-              type="text"
-              value={formData.entity}
-              onChange={(e) => setFormData({ ...formData, entity: e.target.value })}
-              placeholder="Company name..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Specialist ID</label>
-            <input
-              type="text"
-              value={formData.payrollSpecialistId}
-              onChange={(e) => setFormData({ ...formData, payrollSpecialistId: e.target.value })}
-              placeholder="Employee Object ID..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              title="Use the MongoDB ObjectId from your employee (e.g., 693d1ae98187544b541daec4)"
-            />
-            <p className="text-xs text-gray-500 mt-1">Use the MongoDB ObjectId (e.g., 693d1ae98187544b541daec4)</p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-            >
-              {loading ? 'Creating...' : 'Create'}
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
