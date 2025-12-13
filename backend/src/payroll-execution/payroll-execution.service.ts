@@ -4,45 +4,56 @@ import mongoose, { Model } from 'mongoose';
 import { employeeSigningBonus } from './models/EmployeeSigningBonus.schema';
 import { EmployeeTerminationResignation } from './models/EmployeeTerminationResignation.schema';
 import { payrollRuns } from './models/payrollRuns.schema';
+// eslint-disable-next-line prettier/prettier
 import { BonusStatus, BenefitStatus, PayRollStatus, PaySlipPaymentStatus } from './enums/payroll-execution-enum';
 import { employeePayrollDetails } from './models/employeePayrollDetails.schema';
 import { employeePenalties } from './models/employeePenalties.schema';
 import { paySlip } from './models/payslip.schema';
+import { EmployeeProfile } from '../employee-profile/models/employee-profile.schema';
+import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
+// Import CalcDraftService
+import { CalcDraftService } from './calc-draft/calc-draft.service';
 
 @Injectable()
 export class PayrollExecutionService {
   constructor(
-    @InjectModel('employeeSigningBonus')  // ✅ Use string literal
+    @InjectModel(employeeSigningBonus.name)
     private employeeSigningBonusModel: Model<employeeSigningBonus>,
-    @InjectModel('EmployeeTerminationResignation')  // ✅ Use string literal
+    @InjectModel(EmployeeTerminationResignation.name)
     private terminationAndResignationBenefitsModel: Model<EmployeeTerminationResignation>,
-    @InjectModel('payrollRuns')
+    @InjectModel(payrollRuns.name)
     private payrollRunsModel: Model<payrollRuns>,
-    @InjectModel('employeePayrollDetails')
+    @InjectModel(employeePayrollDetails.name)
     private employeePayrollDetailsModel: Model<employeePayrollDetails>,
-    @InjectModel('employeePenalties')
+    @InjectModel(employeePenalties.name)
     private employeePenaltiesModel: Model<employeePenalties>,
-    @InjectModel('paySlip')
+    @InjectModel(paySlip.name)
     private payslipModel: Model<paySlip>,
+    @InjectModel(EmployeeProfile.name)
+    private employeeModel: Model<EmployeeProfile>,
+    // ✅ Inject CalcDraftService
+    private calcDraftService: CalcDraftService,
   ) {}
-
 
   async getPendingSigningBonuses() {
     console.log('🔍 Model name:', this.employeeSigningBonusModel.modelName);
-    console.log('🔍 Collection name:', this.employeeSigningBonusModel.collection.name);
+    console.log(
+      '🔍 Collection name:',
+      this.employeeSigningBonusModel.collection.name,
+    );
     console.log('🔍 Status enum value:', BonusStatus.PENDING);
-    
+
     const allDocs = await this.employeeSigningBonusModel.find({}).exec();
     console.log('🔍 Total docs in collection:', allDocs.length);
     console.log('🔍 Sample doc:', allDocs[0]);
-    
+
     const results = await this.employeeSigningBonusModel
       .find({ status: BonusStatus.PENDING })
       .populate('employeeId', 'firstName lastName email')
       .populate('signingBonusId')
       .sort({ createdAt: -1 })
       .exec();
-    
+
     console.log('🔍 Results with PENDING status:', results.length);
     return results;
   }
@@ -73,25 +84,26 @@ export class PayrollExecutionService {
     return await signingBonus.save();
   }
   // Add to PayrollExecutionService
-async getAllPayrollRuns(filters?: any) {
-  const query: any = {};
-  
-  if (filters?.status) query.status = filters.status;
-  if (filters?.entity) query.entity = filters.entity;
-  if (filters?.startDate || filters?.endDate) {
-    query.payrollPeriod = {};
-    if (filters.startDate) query.payrollPeriod.$gte = new Date(filters.startDate);
-    if (filters.endDate) query.payrollPeriod.$lte = new Date(filters.endDate);
-  }
+  async getAllPayrollRuns(filters?: any) {
+    const query: any = {};
 
-  return await this.payrollRunsModel
-    .find(query)
-    .populate('payrollSpecialistId', 'firstName lastName email')
-    .populate('payrollManagerId', 'firstName lastName email')
-    .populate('financeStaffId', 'firstName lastName email')
-    .sort({ createdAt: -1 })
-    .exec();
-}
+    if (filters?.status) query.status = filters.status;
+    if (filters?.entity) query.entity = filters.entity;
+    if (filters?.startDate || filters?.endDate) {
+      query.payrollPeriod = {};
+      if (filters.startDate)
+        query.payrollPeriod.$gte = new Date(filters.startDate);
+      if (filters.endDate) query.payrollPeriod.$lte = new Date(filters.endDate);
+    }
+
+    return await this.payrollRunsModel
+      .find(query)
+      .populate('payrollSpecialistId', 'firstName lastName email')
+      .populate('payrollManagerId', 'firstName lastName email')
+      .populate('financeStaffId', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .exec();
+  }
 
   async rejectSigningBonus(id: string) {
     const signingBonus = await this.employeeSigningBonusModel.findById(id);
@@ -107,155 +119,156 @@ async getAllPayrollRuns(filters?: any) {
     return await signingBonus.save();
   }
 
-  
   // Fixed getAllPayslips method for PayrollExecutionService
-// Based on actual schema structure
+  // Based on actual schema structure
 
-async getAllPayslips(
-  runId?: string,
-  employeeName?: string,
-  department?: string,
-) {
-  const query: any = {};
-  
-  if (runId) {
-    const runObjectId = await this._resolveRunObjectId(runId);
-    query.payrollRunId = runObjectId;
-  }
-  
-  let payslips = await this.payslipModel
-    .find(query)
-    .populate('employeeId', 'firstName lastName email code department')
-    .populate('payrollRunId')
-    .exec();
-  
-  // Filter by employee name
-  if (employeeName) {
-    payslips = payslips.filter((p) => {
-      const emp = p.employeeId as any;
-      if (!emp) return false;
-      const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
-      return fullName.includes(employeeName.toLowerCase());
-    });
-  }
-  
-  // Filter by department
-  if (department) {
-    payslips = payslips.filter((p) => {
-      const emp = p.employeeId as any;
-      return emp && emp.department === department;
-    });
-  }
-  
-  // Map to frontend format
-  return payslips.map((payslip) => {
-    const emp = payslip.employeeId as any;
-    const run = payslip.payrollRunId as any;
-    
-    // Calculate allowances - allowance schema likely has 'amount' property
-    const allowancesTotal = Array.isArray(payslip.earningsDetails?.allowances)
-      ? payslip.earningsDetails.allowances.reduce(
-          (sum, a: any) => sum + (a.amount || 0),
-          0
-        )
-      : 0;
-    
-    // Calculate bonuses - signingBonus schema uses 'givenAmount' property
-    const bonusesTotal = Array.isArray(payslip.earningsDetails?.bonuses)
-      ? payslip.earningsDetails.bonuses.reduce(
-          (sum, b: any) => sum + (b.givenAmount || 0),
-          0
-        )
-      : 0;
-    
-    // Calculate benefits - terminationAndResignationBenefits schema uses 'givenAmount' property
-    const benefitsTotal = Array.isArray(payslip.earningsDetails?.benefits)
-      ? payslip.earningsDetails.benefits.reduce(
-          (sum, b: any) => sum + (b.givenAmount || 0),
-          0
-        )
-      : 0;
-    
-    // Calculate refunds if present
-    const refundsTotal = Array.isArray(payslip.earningsDetails?.refunds)
-      ? payslip.earningsDetails.refunds.reduce(
-          (sum, r: any) => sum + (r.amount || 0),
-          0
-        )
-      : 0;
-    
-    // Calculate taxes - taxRules schema likely has 'amount' property
-    const taxesTotal = Array.isArray(payslip.deductionsDetails?.taxes)
-      ? payslip.deductionsDetails.taxes.reduce(
-          (sum, t: any) => sum + (t.amount || 0),
-          0
-        )
-      : 0;
-    
-    // Calculate insurance - insuranceBrackets schema likely has 'amount' property
-    const insuranceTotal = Array.isArray(payslip.deductionsDetails?.insurances)
-      ? payslip.deductionsDetails.insurances.reduce(
-          (sum, i: any) => sum + (i.amount || 0),
-          0
-        )
-      : 0;
-    
-    // Calculate penalties - employeePenalties has nested structure
-    let penaltiesTotal = 0;
-    if (payslip.deductionsDetails?.penalties) {
-      const penalties = payslip.deductionsDetails.penalties as any;
-      // employeePenalties schema has a 'penalties' array property
-      if (Array.isArray(penalties.penalties)) {
-        penaltiesTotal = penalties.penalties.reduce(
-          (sum: number, p: any) => sum + (p.amount || 0),
-          0
-        );
-      }
+  async getAllPayslips(
+    runId?: string,
+    employeeName?: string,
+    department?: string,
+  ) {
+    const query: any = {};
+
+    if (runId) {
+      const runObjectId = await this._resolveRunObjectId(runId);
+      query.payrollRunId = runObjectId;
     }
-    
-    return {
-      _id: payslip._id,
-      employeeId: emp?._id,
-      employeeName: emp
-        ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim()
-        : 'Unknown',
-      employeeCode: emp?.code || emp?._id || 'N/A',
-      department: emp?.department || 'N/A',
-      runPeriod: run?.payrollPeriod || new Date(),
-      grossSalary: payslip.totalGrossSalary || 0,
-      deductions: payslip.totaDeductions || 0,
-      netPay: payslip.netPay || 0,
-      status: payslip.paymentStatus || 'pending',
-      earnings: {
-        baseSalary: payslip.earningsDetails?.baseSalary || 0,
-        allowances: allowancesTotal,
-        bonuses: bonusesTotal,
-        benefits: benefitsTotal,
-        refunds: refundsTotal,
-      },
-      deductionsBreakdown: {
-        taxes: taxesTotal,
-        insurance: insuranceTotal,
-        penalties: penaltiesTotal,
-      },
-    };
-  });
-}
 
-async getPayslipById(id: string) {
-  const payslip = await this.payslipModel
-    .findById(id)
-    .populate('employeeId')
-    .populate('payrollRunId')
-    .exec();
-  
-  if (!payslip) {
-    throw new NotFoundException('Payslip not found');
+    let payslips = await this.payslipModel
+      .find(query)
+      .populate('employeeId', 'firstName lastName email code department')
+      .populate('payrollRunId')
+      .exec();
+
+    // Filter by employee name
+    if (employeeName) {
+      payslips = payslips.filter((p) => {
+        const emp = p.employeeId as any;
+        if (!emp) return false;
+        const fullName =
+          `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
+        return fullName.includes(employeeName.toLowerCase());
+      });
+    }
+
+    // Filter by department
+    if (department) {
+      payslips = payslips.filter((p) => {
+        const emp = p.employeeId as any;
+        return emp && emp.department === department;
+      });
+    }
+
+    // Map to frontend format
+    return payslips.map((payslip) => {
+      const emp = payslip.employeeId as any;
+      const run = payslip.payrollRunId as any;
+
+      // Calculate allowances - allowance schema likely has 'amount' property
+      const allowancesTotal = Array.isArray(payslip.earningsDetails?.allowances)
+        ? payslip.earningsDetails.allowances.reduce(
+            (sum, a: any) => sum + (a.amount || 0),
+            0,
+          )
+        : 0;
+
+      // Calculate bonuses - signingBonus schema uses 'givenAmount' property
+      const bonusesTotal = Array.isArray(payslip.earningsDetails?.bonuses)
+        ? payslip.earningsDetails.bonuses.reduce(
+            (sum, b: any) => sum + (b.givenAmount || 0),
+            0,
+          )
+        : 0;
+
+      // Calculate benefits - terminationAndResignationBenefits schema uses 'givenAmount' property
+      const benefitsTotal = Array.isArray(payslip.earningsDetails?.benefits)
+        ? payslip.earningsDetails.benefits.reduce(
+            (sum, b: any) => sum + (b.givenAmount || 0),
+            0,
+          )
+        : 0;
+
+      // Calculate refunds if present
+      const refundsTotal = Array.isArray(payslip.earningsDetails?.refunds)
+        ? payslip.earningsDetails.refunds.reduce(
+            (sum, r: any) => sum + (r.amount || 0),
+            0,
+          )
+        : 0;
+
+      // Calculate taxes - taxRules schema likely has 'amount' property
+      const taxesTotal = Array.isArray(payslip.deductionsDetails?.taxes)
+        ? payslip.deductionsDetails.taxes.reduce(
+            (sum, t: any) => sum + (t.amount || 0),
+            0,
+          )
+        : 0;
+
+      // Calculate insurance - insuranceBrackets schema likely has 'amount' property
+      const insuranceTotal = Array.isArray(
+        payslip.deductionsDetails?.insurances,
+      )
+        ? payslip.deductionsDetails.insurances.reduce(
+            (sum, i: any) => sum + (i.amount || 0),
+            0,
+          )
+        : 0;
+
+      // Calculate penalties - employeePenalties has nested structure
+      let penaltiesTotal = 0;
+      if (payslip.deductionsDetails?.penalties) {
+        const penalties = payslip.deductionsDetails.penalties as any;
+        // employeePenalties schema has a 'penalties' array property
+        if (Array.isArray(penalties.penalties)) {
+          penaltiesTotal = penalties.penalties.reduce(
+            (sum: number, p: any) => sum + (p.amount || 0),
+            0,
+          );
+        }
+      }
+
+      return {
+        _id: payslip._id,
+        employeeId: emp?._id,
+        employeeName: emp
+          ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim()
+          : 'Unknown',
+        employeeCode: emp?.code || emp?._id || 'N/A',
+        department: emp?.department || 'N/A',
+        runPeriod: run?.payrollPeriod || new Date(),
+        grossSalary: payslip.totalGrossSalary || 0,
+        deductions: payslip.totaDeductions || 0,
+        netPay: payslip.netPay || 0,
+        status: payslip.paymentStatus || 'pending',
+        earnings: {
+          baseSalary: payslip.earningsDetails?.baseSalary || 0,
+          allowances: allowancesTotal,
+          bonuses: bonusesTotal,
+          benefits: benefitsTotal,
+          refunds: refundsTotal,
+        },
+        deductionsBreakdown: {
+          taxes: taxesTotal,
+          insurance: insuranceTotal,
+          penalties: penaltiesTotal,
+        },
+      };
+    });
   }
-  
-  return payslip;
-}
 
+  async getPayslipById(id: string) {
+    const payslip = await this.payslipModel
+      .findById(id)
+      .populate('employeeId')
+      .populate('payrollRunId')
+      .exec();
+
+    if (!payslip) {
+      throw new NotFoundException('Payslip not found');
+    }
+
+    return payslip;
+  }
 
   async editSigningBonus(id: string, givenAmount: number, paymentDate?: Date) {
     const signingBonus = await this.employeeSigningBonusModel.findById(id);
@@ -299,7 +312,8 @@ async getPayslipById(id: string) {
   }
 
   async approveBenefit(id: string) {
-    const benefit = await this.terminationAndResignationBenefitsModel.findById(id);
+    const benefit =
+      await this.terminationAndResignationBenefitsModel.findById(id);
     if (!benefit) {
       throw new NotFoundException(`Benefit with ID ${id} not found`);
     }
@@ -313,7 +327,8 @@ async getPayslipById(id: string) {
   }
 
   async rejectBenefit(id: string) {
-    const benefit = await this.terminationAndResignationBenefitsModel.findById(id);
+    const benefit =
+      await this.terminationAndResignationBenefitsModel.findById(id);
     if (!benefit) {
       throw new NotFoundException(`Benefit with ID ${id} not found`);
     }
@@ -327,7 +342,8 @@ async getPayslipById(id: string) {
   }
 
   async editBenefit(id: string, givenAmount: number) {
-    const benefit = await this.terminationAndResignationBenefitsModel.findById(id);
+    const benefit =
+      await this.terminationAndResignationBenefitsModel.findById(id);
     if (!benefit) {
       throw new NotFoundException(`Benefit with ID ${id} not found`);
     }
@@ -398,7 +414,9 @@ async getPayslipById(id: string) {
       throw new NotFoundException(`Payroll run with ID ${id} not found`);
     }
 
-    const validation = await this.validatePayrollPeriod(payrollRun.payrollPeriod);
+    const validation = await this.validatePayrollPeriod(
+      payrollRun.payrollPeriod,
+    );
 
     if (!validation.isValid) {
       throw new BadRequestException({
@@ -464,45 +482,101 @@ async getPayslipById(id: string) {
 
     return await payrollRun.save();
   }
-
   async startPayrollInitiation(
     runId: string,
     payrollPeriod: Date,
     payrollSpecialistId: string,
     entity: string,
   ) {
-    const preRunCheck = await this.checkPreRunApprovalsComplete();
-    if (!preRunCheck.allApprovalsComplete) {
+    try {
+      console.log('🚀 Starting payroll initiation...', { runId, payrollPeriod, entity });
+  
+      // Check pre-run approvals
+      const preRunCheck = await this.checkPreRunApprovalsComplete();
+      console.log('✅ Pre-run check:', preRunCheck);
+      
+      if (!preRunCheck.allApprovalsComplete) {
+        throw new BadRequestException({
+          message: 'Cannot start payroll. Pending pre-run approvals.',
+          details: preRunCheck,
+        });
+      }
+  
+      // Validate payroll period
+      const validation = await this.validatePayrollPeriod(payrollPeriod);
+      console.log('✅ Period validation:', validation);
+      
+      if (!validation.isValid) {
+        throw new BadRequestException({
+          message: 'Invalid payroll period',
+          errors: validation.errors,
+        });
+      }
+  
+      // Create payroll run
+      console.log('📝 Creating payroll run...');
+      const payrollRun = new this.payrollRunsModel({
+        runId,
+        payrollPeriod,
+        status: PayRollStatus.DRAFT,
+        entity,
+        employees: 0,
+        exceptions: 0,
+        totalnetpay: 0,
+        payrollSpecialistId,
+        paymentStatus: PaySlipPaymentStatus.PENDING,
+      });
+  
+      await payrollRun.save();
+      console.log('✅ Payroll run created:', payrollRun._id);
+  
+      // Fetch active employees
+      console.log('👥 Fetching active employees...');
+      const employees = await this.employeeModel
+        .find({ status: EmployeeStatus.ACTIVE })
+        .lean()
+        .exec();
+  
+      console.log(`✅ Found ${employees.length} active employees`);
+  
+      if (!employees || employees.length === 0) {
+        throw new BadRequestException('No active employees found');
+      }
+  
+      // Process draft generation
+      console.log('⚙️ Processing draft generation...');
+      const runObjectId = new mongoose.Types.ObjectId(payrollRun._id);
+      
+      const result = await this.calcDraftService.processDraftGeneration(
+        runObjectId, 
+        employees
+      );
+      
+      console.log('✅ Draft generation complete:', {
+        employees: result.run.employees,
+        exceptions: result.exceptionsCount,
+        totalNetPay: result.run.totalnetpay
+      });
+  
+      // Return updated run
+      return await this.payrollRunsModel.findById(payrollRun._id).exec();
+      
+    } catch (error) {
+      console.error('❌ Error in startPayrollInitiation:', error);
+      
+      // Provide detailed error message
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
       throw new BadRequestException({
-        message: 'Cannot start payroll. Pending pre-run approvals.',
-        details: preRunCheck,
+        message: 'Failed to create payroll run',
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
-
-    const validation = await this.validatePayrollPeriod(payrollPeriod);
-    if (!validation.isValid) {
-      throw new BadRequestException({
-        message: 'Invalid payroll period',
-        errors: validation.errors,
-      });
-    }
-
-    const payrollRun = new this.payrollRunsModel({
-      runId,
-      payrollPeriod,
-      status: PayRollStatus.DRAFT,
-      entity,
-      employees: 0,
-      exceptions: 0,
-      totalnetpay: 0,
-      payrollSpecialistId,
-      paymentStatus: PaySlipPaymentStatus.PENDING, // Fixed: Use enum instead of string
-    });
-
-    await payrollRun.save();
-
-    return payrollRun;
   }
+
 
   async checkPreRunApprovalsComplete() {
     const pendingBonuses = await this.employeeSigningBonusModel.countDocuments({
@@ -541,7 +615,9 @@ async getPayslipById(id: string) {
 
     // Fixed: Complete the condition
     if (run.status === PayRollStatus.APPROVED) {
-      throw new BadRequestException('Cannot publish a run that is already approved');
+      throw new BadRequestException(
+        'Cannot publish a run that is already approved',
+      );
     }
 
     run.status = PayRollStatus.UNDER_REVIEW; // Fixed: Use enum value
@@ -566,10 +642,18 @@ async getPayslipById(id: string) {
     run.status = PayRollStatus.PENDING_FINANCE_APPROVAL; // Fixed: Use enum value
     if (approverId) run.payrollManagerId = approverId as any;
     await run.save();
-    return { message: 'Payroll manager approved', runId: run.runId, managerApprovalDate: run.managerApprovalDate };
+    return {
+      message: 'Payroll manager approved',
+      runId: run.runId,
+      managerApprovalDate: run.managerApprovalDate,
+    };
   }
 
-  async rejectByPayrollManager(runId: string, reason: string, approverId?: string) {
+  async rejectByPayrollManager(
+    runId: string,
+    reason: string,
+    approverId?: string,
+  ) {
     if (!reason) throw new BadRequestException('Rejection reason is required');
     const runObjectId = await this._resolveRunObjectId(runId);
     const run = await this.payrollRunsModel.findById(runObjectId);
@@ -589,7 +673,9 @@ async getPayslipById(id: string) {
     if (!run) throw new NotFoundException('Payroll run not found');
 
     if (!run.managerApprovalDate) {
-      throw new BadRequestException('Cannot approve before Payroll Manager approval');
+      throw new BadRequestException(
+        'Cannot approve before Payroll Manager approval',
+      );
     }
 
     run.financeApprovalDate = new Date();
@@ -598,10 +684,18 @@ async getPayslipById(id: string) {
     run.paymentStatus = PaySlipPaymentStatus.PENDING as any;
     await run.save();
 
-    return { message: 'Finance approved', runId: run.runId, financeApprovalDate: run.financeApprovalDate };
+    return {
+      message: 'Finance approved',
+      runId: run.runId,
+      financeApprovalDate: run.financeApprovalDate,
+    };
   }
 
-  async rejectByFinanceStaff(runId: string, reason: string, approverId?: string) {
+  async rejectByFinanceStaff(
+    runId: string,
+    reason: string,
+    approverId?: string,
+  ) {
     if (!reason) throw new BadRequestException('Rejection reason is required');
     const runObjectId = await this._resolveRunObjectId(runId);
     const run = await this.payrollRunsModel.findById(runObjectId);
@@ -625,7 +719,6 @@ async getPayslipById(id: string) {
     await run.save();
     return { message: 'Payroll run locked', runId: run.runId };
   }
-  
 
   async unfreezePayroll(runId: string, unlockReason?: string) {
     const runObjectId = await this._resolveRunObjectId(runId);
@@ -655,12 +748,25 @@ async getPayslipById(id: string) {
     };
   }
 
-  async createPayrollAdjustment(runId: string, employeeId: string, type: 'bonus' | 'deduction' | 'benefit', amount: number, reason?: string) {
-    if (!amount || isNaN(amount)) throw new BadRequestException('Amount must be a valid number');
+  async createPayrollAdjustment(
+    runId: string,
+    employeeId: string,
+    type: 'bonus' | 'deduction' | 'benefit',
+    amount: number,
+    reason?: string,
+  ) {
+    if (!amount || isNaN(amount))
+      throw new BadRequestException('Amount must be a valid number');
 
     const runObjectId = await this._resolveRunObjectId(runId);
-    const details = await this.employeePayrollDetailsModel.findOne({ payrollRunId: runObjectId, employeeId: new mongoose.Types.ObjectId(employeeId) });
-    if (!details) throw new NotFoundException('Employee payroll details not found for this run');
+    const details = await this.employeePayrollDetailsModel.findOne({
+      payrollRunId: runObjectId,
+      employeeId: new mongoose.Types.ObjectId(employeeId),
+    });
+    if (!details)
+      throw new NotFoundException(
+        'Employee payroll details not found for this run',
+      );
 
     switch (type) {
       case 'bonus':
@@ -680,23 +786,37 @@ async getPayslipById(id: string) {
     }
 
     if (reason) {
-      details.exceptions = details.exceptions ? `${details.exceptions}; ${reason}` : reason;
+      details.exceptions = details.exceptions
+        ? `${details.exceptions}; ${reason}`
+        : reason;
     }
 
     await details.save();
     return details;
   }
 
-  async resolveException(runId: string, employeeId: string, resolutionNote?: string) {
+  async resolveException(
+    runId: string,
+    employeeId: string,
+    resolutionNote?: string,
+  ) {
     const runObjectId = await this._resolveRunObjectId(runId);
-    const details = await this.employeePayrollDetailsModel.findOne({ payrollRunId: runObjectId, employeeId: new mongoose.Types.ObjectId(employeeId) });
-    if (!details) throw new NotFoundException('Employee payroll details not found for this run');
+    const details = await this.employeePayrollDetailsModel.findOne({
+      payrollRunId: runObjectId,
+      employeeId: new mongoose.Types.ObjectId(employeeId),
+    });
+    if (!details)
+      throw new NotFoundException(
+        'Employee payroll details not found for this run',
+      );
 
     if (!details.exceptions) {
       return { message: 'No exception to resolve' };
     }
 
-    details.exceptions = resolutionNote ? `${details.exceptions} -- RESOLVED: ${resolutionNote}` : undefined;
+    details.exceptions = resolutionNote
+      ? `${details.exceptions} -- RESOLVED: ${resolutionNote}`
+      : undefined;
     await details.save();
     return { message: 'Exception resolved', employeeId, runId };
   }
@@ -706,15 +826,21 @@ async getPayslipById(id: string) {
     const run = await this.payrollRunsModel.findById(runObjectId);
     if (!run) throw new NotFoundException('Payroll run not found');
 
-    const detailsList = await this.employeePayrollDetailsModel.find({ payrollRunId: runObjectId });
+    const detailsList = await this.employeePayrollDetailsModel.find({
+      payrollRunId: runObjectId,
+    });
     if (!detailsList || detailsList.length === 0) {
-      throw new BadRequestException('No employee payroll details found for this run');
+      throw new BadRequestException(
+        'No employee payroll details found for this run',
+      );
     }
 
     const created: any[] = [];
 
     for (const d of detailsList) {
-      const penaltiesDoc = await this.employeePenaltiesModel.findOne({ employeeId: d.employeeId });
+      const penaltiesDoc = await this.employeePenaltiesModel.findOne({
+        employeeId: d.employeeId,
+      });
 
       const payslipDoc: Partial<paySlip> = {
         employeeId: d.employeeId,
@@ -729,9 +855,18 @@ async getPayslipById(id: string) {
         deductionsDetails: {
           taxes: [],
           insurances: [],
-          penalties: penaltiesDoc ? { employeeId: penaltiesDoc.employeeId, penalties: penaltiesDoc.penalties } : undefined,
+          penalties: penaltiesDoc
+            ? {
+                employeeId: penaltiesDoc.employeeId,
+                penalties: penaltiesDoc.penalties,
+              }
+            : undefined,
         } as any,
-        totalGrossSalary: (d.baseSalary ?? 0) + (d.allowances ?? 0) + (d.bonus ?? 0) + (d.benefit ?? 0),
+        totalGrossSalary:
+          (d.baseSalary ?? 0) +
+          (d.allowances ?? 0) +
+          (d.bonus ?? 0) +
+          (d.benefit ?? 0),
         totaDeductions: d.deductions ?? 0,
         netPay: d.netPay ?? 0,
         paymentStatus: PaySlipPaymentStatus.PENDING as any,
@@ -746,14 +881,22 @@ async getPayslipById(id: string) {
     run.totalnetpay = detailsList.reduce((s, x) => s + (x.netPay ?? 0), 0);
     await run.save();
 
-    return { count: created.length, payslips: created.map((p) => ({ id: p._id, employeeId: p.employeeId })) };
+    return {
+      count: created.length,
+      payslips: created.map((p) => ({ id: p._id, employeeId: p.employeeId })),
+    };
   }
 
   async distributePayslips(runId: string) {
     const runObjectId = await this._resolveRunObjectId(runId);
     // Note: You might want to add a DISTRIBUTED status to your enum if needed
-    const res = await this.payslipModel.updateMany({ payrollRunId: runObjectId }, { paymentStatus: PaySlipPaymentStatus.PENDING as any });
-    return { modifiedCount: (res as any).modifiedCount ?? (res as any).nModified ?? 0 };
+    const res = await this.payslipModel.updateMany(
+      { payrollRunId: runObjectId },
+      { paymentStatus: PaySlipPaymentStatus.PENDING as any },
+    );
+    return {
+      modifiedCount: (res as any).modifiedCount ?? (res as any).nModified ?? 0,
+    };
   }
 
   async markPayrollAsPaid(runId: string) {
@@ -761,11 +904,17 @@ async getPayslipById(id: string) {
     const run = await this.payrollRunsModel.findById(runObjectId);
     if (!run) throw new NotFoundException('Payroll run not found');
 
-    const res = await this.payslipModel.updateMany({ payrollRunId: runObjectId }, { paymentStatus: PaySlipPaymentStatus.PAID as any });
+    const res = await this.payslipModel.updateMany(
+      { payrollRunId: runObjectId },
+      { paymentStatus: PaySlipPaymentStatus.PAID as any },
+    );
     run.paymentStatus = PaySlipPaymentStatus.PAID as any;
     await run.save();
 
-    return { modifiedCount: (res as any).modifiedCount ?? (res as any).nModified ?? 0, runPaymentStatus: run.paymentStatus };
+    return {
+      modifiedCount: (res as any).modifiedCount ?? (res as any).nModified ?? 0,
+      runPaymentStatus: run.paymentStatus,
+    };
   }
 
   async flagPayrollExceptions(payrollRunId: string) {
@@ -910,7 +1059,9 @@ async getPayslipById(id: string) {
     };
   }
 
-  private async _resolveRunObjectId(runIdOrId: string): Promise<mongoose.Types.ObjectId> {
+  private async _resolveRunObjectId(
+    runIdOrId: string,
+  ): Promise<mongoose.Types.ObjectId> {
     if (mongoose.Types.ObjectId.isValid(runIdOrId)) {
       return new mongoose.Types.ObjectId(runIdOrId);
     }
@@ -919,4 +1070,5 @@ async getPayslipById(id: string) {
     if (!run) throw new NotFoundException('Payroll run not found');
     return run._id;
   }
+
 }

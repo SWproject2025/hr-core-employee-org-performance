@@ -1,60 +1,114 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, ArrowLeft, AlertCircle } from 'lucide-react';
-import toast from 'react-hot-toast';
-
-// Mock payrollService
+import { CheckCircle, XCircle, AlertCircle, Edit2, X } from 'lucide-react';
 const payrollService = {
   getPendingSigningBonuses: async () => {
     const response = await fetch('http://localhost:3000/payroll-execution/signing-bonuses/pending');
     if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   },
+  
   getPendingBenefits: async () => {
     const response = await fetch('http://localhost:3000/payroll-execution/benefits/pending');
     if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   },
-  approveSigningBonus: async (id) => {
+  
+  approveSigningBonus: async (id: string) => {
     const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/approve`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to approve');
     return response.json();
   },
-  rejectSigningBonus: async (id) => {
+  
+  rejectSigningBonus: async (id: string) => {
     const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/reject`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to reject');
     return response.json();
   },
-  approveBenefit: async (id) => {
+  
+  editSigningBonus: async (id: string, givenAmount: number, paymentDate?: string) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/edit`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ givenAmount, paymentDate })
+    });
+    if (!response.ok) throw new Error('Failed to edit');
+    return response.json();
+  },
+  
+  approveBenefit: async (id: string) => {
     const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/approve`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to approve');
     return response.json();
   },
-  rejectBenefit: async (id) => {
+  
+  rejectBenefit: async (id: string) => {
     const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/reject`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to reject');
     return response.json();
+  },
+  
+  editBenefit: async (id: string, givenAmount: number) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/edit`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ givenAmount })
+    });
+    if (!response.ok) throw new Error('Failed to edit');
+    return response.json();
   }
 };
 
+interface Employee {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+interface Bonus {
+  _id: string;
+  employeeId: Employee;
+  givenAmount: number;
+  paymentDate?: string;
+  status: string;
+}
+
+interface Benefit {
+  _id: string;
+  employeeId: Employee;
+  givenAmount: number;
+  benefitType?: string;
+  status: string;
+}
+
 const PreRunApprovalsPage = () => {
   const [activeTab, setActiveTab] = useState('bonuses');
-  const [bonuses, setBonuses] = useState([]);
-  const [benefits, setBenefits] = useState([]);
+  const [bonuses, setBonuses] = useState<Bonus[]>([]);
+  const [benefits, setBenefits] = useState<Benefit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<Bonus | Benefit | null>(null);
+  const [editType, setEditType] = useState('');
+  const [toast, setToast] = useState({ show: false, message: '', type: '' });
 
   useEffect(() => {
     fetchPendingItems();
   }, []);
+
+  const showToast = (message: string, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
+  };
 
   const fetchPendingItems = async () => {
     try {
@@ -67,47 +121,76 @@ const PreRunApprovalsPage = () => {
       setBenefits(benefitsData);
     } catch (error) {
       console.error('Error fetching pending items:', error);
-      toast.error('Failed to fetch pending approvals: ' + (error.message || 'Unknown error'));
+      showToast('Failed to fetch pending approvals', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApprove = async (id, type) => {
+  const handleApprove = async (id: string, type: string) => {
     try {
       if (type === 'bonus') {
         await payrollService.approveSigningBonus(id);
       } else {
         await payrollService.approveBenefit(id);
       }
-      toast.success('Approved successfully');
+      showToast('Approved successfully');
       setSelectedItems([]);
       fetchPendingItems();
-    } catch (error) {
-      console.error('Error approving:', error);
-      toast.error(error.message || 'Failed to approve');
+    } catch (error: any) {
+      showToast(error.message || 'Failed to approve', 'error');
     }
   };
 
-  const handleReject = async (id, type) => {
+  const handleReject = async (id: string, type: string) => {
     try {
       if (type === 'bonus') {
         await payrollService.rejectSigningBonus(id);
       } else {
         await payrollService.rejectBenefit(id);
       }
-      toast.success('Rejected successfully');
+      showToast('Rejected successfully');
       setSelectedItems([]);
       fetchPendingItems();
-    } catch (error) {
-      console.error('Error rejecting:', error);
-      toast.error(error.message || 'Failed to reject');
+    } catch (error: any) {
+      showToast(error.message || 'Failed to reject', 'error');
     }
   };
 
-  const handleBulkAction = async (action) => {
+  const openEditModal = (item: Bonus | Benefit, type: string) => {
+    setEditingItem(item);
+    setEditType(type);
+    setEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModalOpen(false);
+    setEditingItem(null);
+    setEditType('');
+  };
+
+  const handleSaveEdit = async (updatedData: any) => {
+    try {
+      if (editType === 'bonus') {
+        await payrollService.editSigningBonus(
+          editingItem!._id,
+          updatedData.givenAmount,
+          updatedData.paymentDate
+        );
+      } else {
+        await payrollService.editBenefit(editingItem!._id, updatedData.givenAmount);
+      }
+      showToast('Updated successfully');
+      closeEditModal();
+      fetchPendingItems();
+    } catch (error: any) {
+      showToast(error.message || 'Failed to update', 'error');
+    }
+  };
+
+  const handleBulkAction = async (action: string) => {
     if (selectedItems.length === 0) {
-      toast.error('Please select items first');
+      showToast('Please select items first', 'error');
       return;
     }
 
@@ -116,24 +199,21 @@ const PreRunApprovalsPage = () => {
     
     if (!window.confirm(confirmMsg)) return;
 
-    const loadingToast = toast.loading(`Processing ${selectedItems.length} item(s)...`);
-
     try {
       await Promise.all(
         selectedItems.map(id => 
           action === 'approve' ? handleApprove(id, type) : handleReject(id, type)
         )
       );
-      toast.success(`Bulk ${action} completed successfully`, { id: loadingToast });
+      showToast(`Bulk ${action} completed successfully`);
       setSelectedItems([]);
       fetchPendingItems();
     } catch (error) {
-      console.error(`Bulk ${action} error:`, error);
-      toast.error(`Some items failed to ${action}`, { id: loadingToast });
+      showToast(`Some items failed to ${action}`, 'error');
     }
   };
 
-  const toggleSelectItem = (id) => {
+  const toggleSelectItem = (id: string) => {
     setSelectedItems(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
@@ -148,21 +228,18 @@ const PreRunApprovalsPage = () => {
     }
   };
 
-  const goBack = () => {
-    window.location.href = '/all-runs/runs';
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      {toast.show && (
+        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${
+          toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'
+        } text-white`}>
+          {toast.message}
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex justify-between items-center">
-          <button
-            onClick={goBack}
-            className="text-blue-600 hover:text-blue-800 flex items-center gap-2 font-medium"
-          >
-            <ArrowLeft size={20} />
-            Back to All Runs
-          </button>
           <h1 className="text-3xl font-bold text-gray-800">Pre-Run Approvals</h1>
         </div>
 
@@ -236,6 +313,7 @@ const PreRunApprovalsPage = () => {
                 onSelectAll={selectAll}
                 onApprove={(id) => handleApprove(id, 'bonus')}
                 onReject={(id) => handleReject(id, 'bonus')}
+                onEdit={(item) => openEditModal(item, 'bonus')}
               />
             ) : (
               <BenefitsTable
@@ -245,8 +323,98 @@ const PreRunApprovalsPage = () => {
                 onSelectAll={selectAll}
                 onApprove={(id) => handleApprove(id, 'benefit')}
                 onReject={(id) => handleReject(id, 'benefit')}
+                onEdit={(item) => openEditModal(item, 'benefit')}
               />
             )}
+          </div>
+        </div>
+      </div>
+
+      {editModalOpen && (
+        <EditModal
+          item={editingItem}
+          type={editType}
+          onClose={closeEditModal}
+          onSave={handleSaveEdit}
+        />
+      )}
+    </div>
+  );
+};
+
+const EditModal = ({ item, type, onClose, onSave }: any) => {
+  const [formData, setFormData] = useState({
+    givenAmount: item?.givenAmount || 0,
+    paymentDate: item?.paymentDate ? new Date(item.paymentDate).toISOString().split('T')[0] : ''
+  });
+
+  const handleSubmit = () => {
+    if (formData.givenAmount > 0) {
+      onSave(formData);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Edit {type === 'bonus' ? 'Signing Bonus' : 'Benefit'}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Employee
+            </label>
+            <div className="text-sm text-gray-600">
+              {item?.employeeId?.firstName} {item?.employeeId?.lastName}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Amount *
+            </label>
+            <input
+              type="number"
+              value={formData.givenAmount}
+              onChange={(e) => setFormData({ ...formData, givenAmount: parseFloat(e.target.value) })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              min="0"
+              step="0.01"
+            />
+          </div>
+
+          {type === 'bonus' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Payment Date
+              </label>
+              <input
+                type="date"
+                value={formData.paymentDate}
+                onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={handleSubmit}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            >
+              Save Changes
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       </div>
@@ -254,7 +422,7 @@ const PreRunApprovalsPage = () => {
   );
 };
 
-const BonusesTable = ({ bonuses, selectedItems, onToggleSelect, onSelectAll, onApprove, onReject }) => {
+const BonusesTable = ({ bonuses, selectedItems, onToggleSelect, onSelectAll, onApprove, onReject, onEdit }: any) => {
   if (bonuses.length === 0) {
     return (
       <div className="text-center py-12">
@@ -279,7 +447,6 @@ const BonusesTable = ({ bonuses, selectedItems, onToggleSelect, onSelectAll, onA
               />
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -287,7 +454,7 @@ const BonusesTable = ({ bonuses, selectedItems, onToggleSelect, onSelectAll, onA
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 bg-white">
-          {bonuses.map((bonus) => (
+          {bonuses.map((bonus: Bonus) => (
             <tr key={bonus._id} className="hover:bg-gray-50 transition">
               <td className="px-6 py-4">
                 <input
@@ -303,9 +470,6 @@ const BonusesTable = ({ bonuses, selectedItems, onToggleSelect, onSelectAll, onA
                 </div>
                 <div className="text-xs text-gray-500">{bonus.employeeId?.email}</div>
               </td>
-              <td className="px-6 py-4 text-sm text-gray-500">
-                {bonus.employeeId?.department || 'N/A'}
-              </td>
               <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                 ${bonus.givenAmount.toLocaleString()}
               </td>
@@ -319,6 +483,13 @@ const BonusesTable = ({ bonuses, selectedItems, onToggleSelect, onSelectAll, onA
               </td>
               <td className="px-6 py-4">
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => onEdit(bonus)}
+                    className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded transition"
+                    title="Edit"
+                  >
+                    <Edit2 size={18} />
+                  </button>
                   <button
                     onClick={() => onApprove(bonus._id)}
                     className="text-green-600 hover:text-green-800 p-2 hover:bg-green-50 rounded transition"
@@ -343,7 +514,7 @@ const BonusesTable = ({ bonuses, selectedItems, onToggleSelect, onSelectAll, onA
   );
 };
 
-const BenefitsTable = ({ benefits, selectedItems, onToggleSelect, onSelectAll, onApprove, onReject }) => {
+const BenefitsTable = ({ benefits, selectedItems, onToggleSelect, onSelectAll, onApprove, onReject, onEdit }: any) => {
   if (benefits.length === 0) {
     return (
       <div className="text-center py-12">
@@ -368,16 +539,14 @@ const BenefitsTable = ({ benefits, selectedItems, onToggleSelect, onSelectAll, o
               />
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 bg-white">
-          {benefits.map((benefit) => (
+          {benefits.map((benefit: Benefit) => (
             <tr key={benefit._id} className="hover:bg-gray-50 transition">
               <td className="px-6 py-4">
                 <input
@@ -393,17 +562,11 @@ const BenefitsTable = ({ benefits, selectedItems, onToggleSelect, onSelectAll, o
                 </div>
                 <div className="text-xs text-gray-500">{benefit.employeeId?.email}</div>
               </td>
-              <td className="px-6 py-4 text-sm text-gray-500">
-                {benefit.employeeId?.department || 'N/A'}
-              </td>
               <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                 ${benefit.givenAmount.toLocaleString()}
               </td>
               <td className="px-6 py-4 text-sm text-gray-500">
-                {benefit.benefitId?.type || 'Termination Benefit'}
-              </td>
-              <td className="px-6 py-4 text-sm text-gray-500">
-                {benefit.createdAt ? new Date(benefit.createdAt).toLocaleDateString() : 'N/A'}
+                {benefit.benefitType || 'Termination Benefit'}
               </td>
               <td className="px-6 py-4">
                 <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-200 text-yellow-800">
@@ -412,6 +575,13 @@ const BenefitsTable = ({ benefits, selectedItems, onToggleSelect, onSelectAll, o
               </td>
               <td className="px-6 py-4">
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => onEdit(benefit)}
+                    className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded transition"
+                    title="Edit"
+                  >
+                    <Edit2 size={18} />
+                  </button>
                   <button
                     onClick={() => onApprove(benefit._id)}
                     className="text-green-600 hover:text-green-800 p-2 hover:bg-green-50 rounded transition"

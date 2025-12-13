@@ -1,13 +1,12 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import { Check, X, Lock, Send, FileText, Clock, AlertCircle, CheckCircle } from 'lucide-react';
-import payrollService from '@/lib/payrollService';
+import { Check, X, Lock, Send, FileText, Clock, AlertCircle, CheckCircle, Unlock } from 'lucide-react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"
 
 const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
   const [payrollRun, setPayrollRun] = useState<any>(null);
-  const [approvals, setApprovals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState<'specialist' | 'manager' | 'finance'>('specialist');
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState<'approve' | 'reject' | 'freeze' | 'unfreeze'>('approve');
   const [reason, setReason] = useState('');
@@ -19,12 +18,10 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [runData, approvalsData] = await Promise.all([
-        payrollService.getPayrollRunById(params.id),
-        payrollService.getApprovalsByRunId(params.id)
-      ]);
-      setPayrollRun(runData);
-      setApprovals(approvalsData);
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}`);
+      if (!response.ok) throw new Error('Failed to fetch payroll run');
+      const data = await response.json();
+      setPayrollRun(data);
     } catch (error) {
       console.error('Error fetching data:', error);
       alert('Failed to load payroll data');
@@ -35,7 +32,10 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handlePublish = async () => {
     try {
-      await payrollService.publishDraftForApproval(params.id);
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/publish`, {
+        method: 'PATCH'
+      });
+      if (!response.ok) throw new Error('Failed to publish');
       alert('Payroll published for approval');
       fetchData();
     } catch (error: any) {
@@ -43,19 +43,38 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
     }
   };
 
-  const handleManagerAction = async (action: 'approve' | 'reject') => {
+  const handleManagerApprove = async () => {
     try {
-      if (action === 'approve') {
-        await payrollService.managerApprove(params.id);
-        alert('Manager approved successfully');
-      } else {
-        if (!reason.trim()) {
-          alert('Please provide a reason for rejection');
-          return;
-        }
-        await payrollService.managerReject(params.id, reason);
-        alert('Manager rejected');
-      }
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/manager-approve`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approverId: 'current-user-id' }) // Replace with actual user ID
+      });
+      if (!response.ok) throw new Error('Failed to approve');
+      alert('Manager approved successfully');
+      setShowModal(false);
+      fetchData();
+    } catch (error: any) {
+      alert(error.message || 'Action failed');
+    }
+  };
+
+  const handleManagerReject = async () => {
+    if (!reason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/manager-reject`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          reason,
+          approverId: 'current-user-id' // Replace with actual user ID
+        })
+      });
+      if (!response.ok) throw new Error('Failed to reject');
+      alert('Manager rejected successfully');
       setShowModal(false);
       setReason('');
       fetchData();
@@ -64,19 +83,38 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
     }
   };
 
-  const handleFinanceAction = async (action: 'approve' | 'reject') => {
+  const handleFinanceApprove = async () => {
     try {
-      if (action === 'approve') {
-        await payrollService.financeApprove(params.id);
-        alert('Finance approved successfully');
-      } else {
-        if (!reason.trim()) {
-          alert('Please provide a reason for rejection');
-          return;
-        }
-        await payrollService.financeReject(params.id, reason);
-        alert('Finance rejected');
-      }
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/finance-approve`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approverId: 'current-user-id' }) // Replace with actual user ID
+      });
+      if (!response.ok) throw new Error('Failed to approve');
+      alert('Finance approved successfully');
+      setShowModal(false);
+      fetchData();
+    } catch (error: any) {
+      alert(error.message || 'Action failed');
+    }
+  };
+
+  const handleFinanceReject = async () => {
+    if (!reason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/finance-reject`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          reason,
+          approverId: 'current-user-id' // Replace with actual user ID
+        })
+      });
+      if (!response.ok) throw new Error('Failed to reject');
+      alert('Finance rejected successfully');
       setShowModal(false);
       setReason('');
       fetchData();
@@ -87,7 +125,12 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleFreeze = async () => {
     try {
-      await payrollService.freezePayroll(params.id, reason);
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/freeze`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      if (!response.ok) throw new Error('Failed to freeze');
       alert('Payroll frozen successfully');
       setShowModal(false);
       setReason('');
@@ -99,7 +142,12 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleUnfreeze = async () => {
     try {
-      await payrollService.unfreezePayroll(params.id, reason);
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/unfreeze`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unlockReason: reason })
+      });
+      if (!response.ok) throw new Error('Failed to unfreeze');
       alert('Payroll unfrozen successfully');
       setShowModal(false);
       setReason('');
@@ -111,8 +159,12 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleGeneratePayslips = async () => {
     try {
-      await payrollService.generatePayslips(params.id);
-      alert('Payslips generated successfully');
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/payslips/generate`, {
+        method: 'POST'
+      });
+      if (!response.ok) throw new Error('Failed to generate payslips');
+      const data = await response.json();
+      alert(`Generated ${data.count} payslips successfully`);
       fetchData();
     } catch (error: any) {
       alert(error.message || 'Failed to generate payslips');
@@ -121,8 +173,12 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleDistributePayslips = async () => {
     try {
-      await payrollService.distributePayslips(params.id);
-      alert('Payslips distributed successfully');
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/payslips/distribute`, {
+        method: 'PATCH'
+      });
+      if (!response.ok) throw new Error('Failed to distribute payslips');
+      const data = await response.json();
+      alert(`Distributed ${data.modifiedCount} payslips successfully`);
       fetchData();
     } catch (error: any) {
       alert(error.message || 'Failed to distribute payslips');
@@ -131,8 +187,12 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleMarkAsPaid = async () => {
     try {
-      await payrollService.markPayrollAsPaid(params.id);
-      alert('Payroll marked as paid');
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${params.id}/mark-paid`, {
+        method: 'PATCH'
+      });
+      if (!response.ok) throw new Error('Failed to mark as paid');
+      const data = await response.json();
+      alert(`Marked ${data.modifiedCount} payslips as paid`);
       fetchData();
     } catch (error: any) {
       alert(error.message || 'Failed to mark as paid');
@@ -161,26 +221,27 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
     );
   }
 
-  const getStepStatus = (step: string) => {
+  const getStepStatus = (status: string) => {
     const statusMap: any = {
       'draft': 0,
-      'under review': 1,
-      'pending finance approval': 2,
+      'under_review': 1,
+      'pending_finance_approval': 2,
       'approved': 3,
       'locked': 4,
-      'paid': 5
+      'unlocked': 3,
+      'rejected': -1
     };
-    return statusMap[payrollRun.status] || 0;
+    return statusMap[status?.toLowerCase()] || 0;
   };
 
   const currentStep = getStepStatus(payrollRun.status);
 
   const steps = [
-    { label: 'Specialist Review', icon: FileText },
-    { label: 'Manager Approval', icon: Check },
-    { label: 'Finance Approval', icon: Check },
-    { label: 'Frozen', icon: Lock },
-    { label: 'Paid', icon: CheckCircle }
+    { label: 'Draft', icon: FileText, status: 'draft' },
+    { label: 'Manager Review', icon: Check, status: 'under_review' },
+    { label: 'Finance Review', icon: CheckCircle, status: 'pending_finance_approval' },
+    { label: 'Approved', icon: CheckCircle, status: 'approved' },
+    { label: 'Locked', icon: Lock, status: 'locked' }
   ];
 
   return (
@@ -189,7 +250,17 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Approvals & Execution</h1>
-          <p className="text-gray-500 mt-1">Run ID: {payrollRun.runId}</p>
+          <p className="text-gray-500 mt-1">Run ID: {payrollRun.runId || payrollRun._id}</p>
+          <div className="mt-2">
+            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+              payrollRun.status === 'approved' ? 'bg-green-200 text-green-800' :
+              payrollRun.status === 'rejected' ? 'bg-red-200 text-red-800' :
+              payrollRun.status === 'locked' ? 'bg-purple-200 text-purple-800' :
+              'bg-yellow-200 text-yellow-800'
+            }`}>
+              {payrollRun.status?.toUpperCase().replace(/_/g, ' ')}
+            </span>
+          </div>
         </div>
 
         {/* Approval Chain Stepper */}
@@ -215,7 +286,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
                     >
                       <Icon size={20} />
                     </div>
-                    <p className="text-xs mt-2 text-center font-medium">{step.label}</p>
+                    <p className="text-xs mt-2 text-center font-medium max-w-[80px]">{step.label}</p>
                   </div>
                   {index < steps.length - 1 && (
                     <div
@@ -227,6 +298,22 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
                 </React.Fragment>
               );
             })}
+          </div>
+        </div>
+
+        {/* Summary Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <p className="text-sm text-gray-500">Total Employees</p>
+            <p className="text-2xl font-bold">{payrollRun.employees || 0}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <p className="text-sm text-gray-500">Exceptions</p>
+            <p className="text-2xl font-bold text-orange-600">{payrollRun.exceptions || 0}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <p className="text-sm text-gray-500">Total Net Pay</p>
+            <p className="text-2xl font-bold text-green-600">${(payrollRun.totalnetpay || 0).toLocaleString()}</p>
           </div>
         </div>
 
@@ -257,7 +344,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
               <Check size={20} className="text-green-600" />
               Payroll Manager
             </h3>
-            {payrollRun.status === 'under review' && (
+            {payrollRun.status === 'under_review' && (
               <div className="space-y-2">
                 <button
                   onClick={() => {
@@ -279,18 +366,34 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
                 </button>
               </div>
             )}
-            {payrollRun.status === 'pending finance approval' && (
+            {(payrollRun.status === 'pending_finance_approval' || payrollRun.status === 'approved') && (
               <button
                 onClick={() => {
                   setModalType('freeze');
                   setShowModal(true);
                 }}
-                className="w-full bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition"
+                className="w-full bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2"
               >
+                <Lock size={18} />
                 Freeze Payroll
               </button>
             )}
-            {payrollRun.status !== 'under review' && payrollRun.status !== 'pending finance approval' && (
+            {payrollRun.status === 'locked' && (
+              <button
+                onClick={() => {
+                  setModalType('unfreeze');
+                  setShowModal(true);
+                }}
+                className="w-full bg-orange-600 text-white py-2 px-4 rounded-lg hover:bg-orange-700 transition flex items-center justify-center gap-2"
+              >
+                <Unlock size={18} />
+                Unfreeze Payroll
+              </button>
+            )}
+            {payrollRun.status !== 'under_review' && 
+             payrollRun.status !== 'pending_finance_approval' && 
+             payrollRun.status !== 'approved' &&
+             payrollRun.status !== 'locked' && (
               <p className="text-sm text-gray-500">No pending manager actions</p>
             )}
           </div>
@@ -301,7 +404,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
               <CheckCircle size={20} className="text-purple-600" />
               Finance Staff
             </h3>
-            {payrollRun.status === 'pending finance approval' && (
+            {payrollRun.status === 'pending_finance_approval' && (
               <div className="space-y-2">
                 <button
                   onClick={() => {
@@ -323,7 +426,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
                 </button>
               </div>
             )}
-            {payrollRun.status !== 'pending finance approval' && (
+            {payrollRun.status !== 'pending_finance_approval' && (
               <p className="text-sm text-gray-500">No pending finance actions</p>
             )}
           </div>
@@ -359,32 +462,51 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
           </div>
         )}
 
-        {/* Approval History Timeline */}
+        {/* Approval Details */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Approval History</h2>
-          {approvals.length === 0 ? (
-            <p className="text-gray-500">No approval history yet</p>
-          ) : (
-            <div className="space-y-4">
-              {approvals.map((approval, index) => (
-                <div key={index} className="flex items-start gap-4 border-l-2 border-blue-500 pl-4">
-                  <div className="flex-shrink-0">
-                    <Clock size={20} className="text-gray-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-800">{approval.action}</p>
-                    <p className="text-sm text-gray-600">By: {approval.user}</p>
-                    {approval.comment && (
-                      <p className="text-sm text-gray-500 mt-1">{approval.comment}</p>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(approval.timestamp).toLocaleString()}
-                    </p>
-                  </div>
+          <h2 className="text-xl font-semibold mb-4">Approval Details</h2>
+          <div className="space-y-3">
+            {payrollRun.managerApprovalDate && (
+              <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
+                <CheckCircle size={20} className="text-green-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-gray-800">Manager Approved</p>
+                  <p className="text-sm text-gray-600">
+                    {new Date(payrollRun.managerApprovalDate).toLocaleString()}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            )}
+            {payrollRun.financeApprovalDate && (
+              <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
+                <CheckCircle size={20} className="text-green-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-gray-800">Finance Approved</p>
+                  <p className="text-sm text-gray-600">
+                    {new Date(payrollRun.financeApprovalDate).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            )}
+            {payrollRun.rejectionReason && (
+              <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg">
+                <X size={20} className="text-red-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-gray-800">Rejection Reason</p>
+                  <p className="text-sm text-gray-600">{payrollRun.rejectionReason}</p>
+                </div>
+              </div>
+            )}
+            {payrollRun.unlockReason && (
+              <div className="flex items-start gap-3 p-3 bg-orange-50 rounded-lg">
+                <Unlock size={20} className="text-orange-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-gray-800">Unlock Reason</p>
+                  <p className="text-sm text-gray-600">{payrollRun.unlockReason}</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -402,7 +524,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
             {(modalType === 'reject' || modalType === 'freeze' || modalType === 'unfreeze') && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Reason (required)
+                  Reason {modalType === 'reject' ? '(required)' : '(optional)'}
                 </label>
                 <textarea
                   value={reason}
@@ -426,14 +548,15 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
               </button>
               <button
                 onClick={() => {
-                  if (payrollRun.status === 'under review') {
-                    handleManagerAction(modalType as 'approve' | 'reject');
-                  } else if (payrollRun.status === 'pending finance approval') {
-                    if (modalType === 'freeze') {
-                      handleFreeze();
-                    } else {
-                      handleFinanceAction(modalType as 'approve' | 'reject');
-                    }
+                  if (payrollRun.status === 'under_review') {
+                    if (modalType === 'approve') handleManagerApprove();
+                    else if (modalType === 'reject') handleManagerReject();
+                  } else if (payrollRun.status === 'pending_finance_approval') {
+                    if (modalType === 'approve') handleFinanceApprove();
+                    else if (modalType === 'reject') handleFinanceReject();
+                    else if (modalType === 'freeze') handleFreeze();
+                  } else if (modalType === 'freeze') {
+                    handleFreeze();
                   } else if (modalType === 'unfreeze') {
                     handleUnfreeze();
                   }
@@ -441,6 +564,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
                 className={`flex-1 px-4 py-2 rounded-lg text-white ${
                   modalType === 'approve' ? 'bg-green-600 hover:bg-green-700' :
                   modalType === 'freeze' ? 'bg-purple-600 hover:bg-purple-700' :
+                  modalType === 'unfreeze' ? 'bg-orange-600 hover:bg-orange-700' :
                   'bg-red-600 hover:bg-red-700'
                 }`}
               >

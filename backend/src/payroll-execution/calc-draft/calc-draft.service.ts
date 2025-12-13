@@ -14,14 +14,25 @@ import { PayRollStatus, PayRollPaymentStatus, BankStatus, BonusStatus, BenefitSt
 @Injectable()
 export class CalcDraftService {
   constructor(
-    @InjectModel('employeeSigningBonus') private employeeSigningBonusModel: Model<employeeSigningBonusDocument>,  // ✅ Fixed
-    @InjectModel('payrollRuns') private payrollRunsModel: Model<payrollRunsDocument>,
-    @InjectModel('employeePayrollDetails') private employeePayrollDetailsModel: Model<employeePayrollDetailsDocument>,
-    @InjectModel('employeePenalties') private employeePenaltiesModel: Model<employeePenaltiesDocument>,
-    @InjectModel('paySlip') private paySlipModel: Model<PayslipDocument>,
-    @InjectModel('EmployeeTerminationResignation') private employeeTerminationResignationModel: Model<EmployeeTerminationResignationDocument>,
-
-  ){}
+    // ✅ FIXED: Use proper model names instead of strings
+    @InjectModel(employeeSigningBonus.name) 
+    private employeeSigningBonusModel: Model<employeeSigningBonus>,
+    
+    @InjectModel(payrollRuns.name) 
+    private payrollRunsModel: Model<payrollRuns>,
+    
+    @InjectModel(employeePayrollDetails.name) 
+    private employeePayrollDetailsModel: Model<employeePayrollDetails>,
+    
+    @InjectModel(employeePenalties.name) 
+    private employeePenaltiesModel: Model<employeePenalties>,
+    
+    @InjectModel(paySlip.name) 
+    private paySlipModel: Model<paySlip>,
+    
+    @InjectModel(EmployeeTerminationResignation.name) 
+    private employeeTerminationResignationModel: Model<EmployeeTerminationResignation>,
+  ) {}
 
   async createPayrollRun(createCalcDraftDto: CreateCalcDraftDto): Promise<payrollRuns> {
     const runId = `PR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
