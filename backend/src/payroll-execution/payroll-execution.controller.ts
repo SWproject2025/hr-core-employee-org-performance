@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable prettier/prettier */
 import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PayrollExecutionService } from './payroll-execution.service';
 import { CalcDraftService } from './calc-draft/calc-draft.service';
@@ -20,14 +23,19 @@ import { payrollRuns, payrollRunsDocument } from './models/payrollRuns.schema';
 import mongoose from 'mongoose';
 
 @Controller('payroll-execution')
-// @UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollExecutionController {
   constructor(
     private readonly payrollExecutionService: PayrollExecutionService,
     private readonly calcDraftService: CalcDraftService,
-    @InjectModel(employeePayrollDetails.name) private employeePayrollDetailsModel: Model<employeePayrollDetailsDocument>,
-    @InjectModel(paySlip.name) private paySlipModel: Model<PayslipDocument>,
-    @InjectModel(payrollRuns.name) private payrollRunsModel: Model<payrollRunsDocument>,
+    @InjectModel(employeePayrollDetails.name) 
+    private employeePayrollDetailsModel: Model<employeePayrollDetailsDocument>,
+    @InjectModel(paySlip.name) 
+    private paySlipModel: Model<PayslipDocument>,
+    @InjectModel(payrollRuns.name) 
+    private payrollRunsModel: Model<payrollRunsDocument>,
+    // ✅ ADD THIS - Inject EmployeeProfile model
+    @InjectModel('EmployeeProfile')
+    private employeeProfileModel: Model<any>,
   ) {}
 
   // ============ PRE-RUN APPROVALS ============
@@ -443,6 +451,54 @@ export class PayrollExecutionController {
   ) {
     return await this.payrollExecutionService.unfreezePayroll(runId, body.unlockReason);
   }
+
+  @Get('debug/signing-bonuses')
+async debugSigningBonuses() {
+  const count = await this.payrollExecutionService['employeeSigningBonusModel'].countDocuments({});
+  const pending = await this.payrollExecutionService['employeeSigningBonusModel'].countDocuments({ status: 'PENDING' });
+  const all = await this.payrollExecutionService['employeeSigningBonusModel'].find({}).exec();
+  
+  return {
+    totalCount: count,
+    pendingCount: pending,
+    collectionName: this.payrollExecutionService['employeeSigningBonusModel'].collection.name,
+    modelName: this.payrollExecutionService['employeeSigningBonusModel'].modelName,
+    documents: all
+  };
+}
+
+@Post('payroll-runs/:runId/calculate-draft')
+@Roles(SystemRole.PAYROLL_SPECIALIST)
+async calculatePayrollDraft(@Param('runId') runId: string) {
+  try {
+    const runObjectId = new mongoose.Types.ObjectId(runId);
+    
+    // ✅ NOW USE THE INJECTED MODEL
+    const employees = await this.employeeProfileModel
+      .find({ status: 'ACTIVE' })
+      .lean()
+      .exec();
+    
+    if (!employees || employees.length === 0) {
+      throw new BadRequestException('No active employees found');
+    }
+    
+    const result = await this.calcDraftService.processDraftGeneration(
+      runObjectId, 
+      employees
+    );
+    
+    return {
+      success: true,
+      message: `Draft calculated for ${result.payrollDetails.length} employees`,
+      employeesProcessed: result.payrollDetails.length,
+      exceptionsFound: result.exceptionsCount,
+      run: result.run
+    };
+  } catch (error) {
+    throw new BadRequestException(`Failed to calculate draft: ${error.message}`);
+  }
+}
 
   // ============ PAYSLIPS ============
   

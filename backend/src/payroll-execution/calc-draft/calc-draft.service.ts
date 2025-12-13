@@ -14,12 +14,13 @@ import { PayRollStatus, PayRollPaymentStatus, BankStatus, BonusStatus, BenefitSt
 @Injectable()
 export class CalcDraftService {
   constructor(
-    @InjectModel(payrollRuns.name) private payrollRunsModel: Model<payrollRunsDocument>,
-    @InjectModel(employeePayrollDetails.name) private employeePayrollDetailsModel: Model<employeePayrollDetailsDocument>,
-    @InjectModel(employeePenalties.name) private employeePenaltiesModel: Model<employeePenaltiesDocument>,
-    @InjectModel(paySlip.name) private paySlipModel: Model<PayslipDocument>,
-    @InjectModel(employeeSigningBonus.name) private employeeSigningBonusModel: Model<employeeSigningBonusDocument>,
-    @InjectModel(EmployeeTerminationResignation.name) private employeeTerminationResignationModel: Model<EmployeeTerminationResignationDocument>,
+    @InjectModel('employeeSigningBonus') private employeeSigningBonusModel: Model<employeeSigningBonusDocument>,  // ✅ Fixed
+    @InjectModel('payrollRuns') private payrollRunsModel: Model<payrollRunsDocument>,
+    @InjectModel('employeePayrollDetails') private employeePayrollDetailsModel: Model<employeePayrollDetailsDocument>,
+    @InjectModel('employeePenalties') private employeePenaltiesModel: Model<employeePenaltiesDocument>,
+    @InjectModel('paySlip') private paySlipModel: Model<PayslipDocument>,
+    @InjectModel('EmployeeTerminationResignation') private employeeTerminationResignationModel: Model<EmployeeTerminationResignationDocument>,
+
   ){}
 
   async createPayrollRun(createCalcDraftDto: CreateCalcDraftDto): Promise<payrollRuns> {

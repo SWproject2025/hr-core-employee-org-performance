@@ -12,29 +12,40 @@ import { paySlip } from './models/payslip.schema';
 @Injectable()
 export class PayrollExecutionService {
   constructor(
-    @InjectModel(employeeSigningBonus.name)
+    @InjectModel('employeeSigningBonus')  // ✅ Use string literal
     private employeeSigningBonusModel: Model<employeeSigningBonus>,
-    @InjectModel(EmployeeTerminationResignation.name)
+    @InjectModel('EmployeeTerminationResignation')  // ✅ Use string literal
     private terminationAndResignationBenefitsModel: Model<EmployeeTerminationResignation>,
-    @InjectModel(payrollRuns.name)
+    @InjectModel('payrollRuns')
     private payrollRunsModel: Model<payrollRuns>,
-    @InjectModel(employeePayrollDetails.name)
+    @InjectModel('employeePayrollDetails')
     private employeePayrollDetailsModel: Model<employeePayrollDetails>,
-    @InjectModel(employeePenalties.name)
+    @InjectModel('employeePenalties')
     private employeePenaltiesModel: Model<employeePenalties>,
-    @InjectModel(paySlip.name)
+    @InjectModel('paySlip')
     private payslipModel: Model<paySlip>,
   ) {}
 
+
   async getPendingSigningBonuses() {
-    return await this.employeeSigningBonusModel
+    console.log('🔍 Model name:', this.employeeSigningBonusModel.modelName);
+    console.log('🔍 Collection name:', this.employeeSigningBonusModel.collection.name);
+    console.log('🔍 Status enum value:', BonusStatus.PENDING);
+    
+    const allDocs = await this.employeeSigningBonusModel.find({}).exec();
+    console.log('🔍 Total docs in collection:', allDocs.length);
+    console.log('🔍 Sample doc:', allDocs[0]);
+    
+    const results = await this.employeeSigningBonusModel
       .find({ status: BonusStatus.PENDING })
       .populate('employeeId', 'firstName lastName email')
       .populate('signingBonusId')
       .sort({ createdAt: -1 })
       .exec();
+    
+    console.log('🔍 Results with PENDING status:', results.length);
+    return results;
   }
-
   async getSigningBonusById(id: string) {
     const signingBonus = await this.employeeSigningBonusModel
       .findById(id)
