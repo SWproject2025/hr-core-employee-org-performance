@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { PayrollExecutionService } from './payroll-execution.service';
 import { EditSigningBonusDto } from './dto/editSigningBonusDto'; 
 import { EditBenefitDto } from './dto/editBenefitDto';
@@ -13,12 +13,12 @@ import { Roles } from '../Common/Decorators/roles.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums'; 
 
 @Controller('payroll-execution')
-@UseGuards(JwtAuthGuard, RolesGuard) // Fixed: Apply both guards at class level
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollExecutionController {
   constructor(private readonly payrollExecutionService: PayrollExecutionService) {}
 
   @Get('signing-bonuses/pending')
-  @Roles(SystemRole.PAYROLL_SPECIALIST) // Fixed: Use enum instead of string
+  @Roles(SystemRole.PAYROLL_SPECIALIST)
   async getPendingSigningBonuses() {
     return await this.payrollExecutionService.getPendingSigningBonuses();
   }
@@ -202,6 +202,18 @@ export class PayrollExecutionController {
     return await this.payrollExecutionService.rejectByFinanceStaff(runId, body.reason, body.approverId);
   }
 
+  @Get('payroll-runs')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
+  async getAllPayrollRuns(
+    @Query('status') status?: string,
+    @Query('entity') entity?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const filters = { status, entity, startDate, endDate };
+    return await this.payrollExecutionService.getAllPayrollRuns(filters);
+  }
+
   @Patch('payroll-runs/:runId/freeze')
   @Roles(SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
   async freezePayroll(
@@ -297,5 +309,25 @@ export class PayrollExecutionController {
   @Roles(SystemRole.FINANCE_STAFF)
   async getPayrollForFinanceReview(@Param('runId') runId: string) {
     return await this.payrollExecutionService.getPayrollForFinanceReview(runId);
+  }
+
+  @Get('payslips')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
+  async getAllPayslips(
+    @Query('runId') runId?: string,
+    @Query('employeeName') employeeName?: string,
+    @Query('department') department?: string,
+  ) {
+    return await this.payrollExecutionService.getAllPayslips(
+      runId,
+      employeeName,
+      department,
+    );
+  }
+
+  @Get('payslips/:id')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF)
+  async getPayslipById(@Param('id') id: string) {
+    return await this.payrollExecutionService.getPayslipById(id);
   }
 }

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import mongoose from 'mongoose';  // ✅ ADD THIS LINE
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TimeManagementModule } from './time-management/time-management.module';
@@ -15,7 +16,15 @@ import { PayrollExecutionModule } from './payroll-execution/payroll-execution.mo
 
 @Module({
   imports: [
-    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/hr-system'),
+    // ✅ REPLACE MongooseModule.forRoot with forRootAsync
+    MongooseModule.forRootAsync({
+      useFactory: () => {
+        mongoose.pluralize(null);  // ✅ Disable auto-pluralization
+        return {
+          uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hr-main',
+        };
+      },
+    }),
     TimeManagementModule,
     RecruitmentModule,
     LeavesModule,

@@ -4,7 +4,6 @@ import {
   Post,
   Put,
   Patch,
-  Delete,
   Body,
   Param,
   Query,
@@ -26,7 +25,7 @@ import {
   RejectLeaveRequestDto,
   LeaveBalanceQueryDto,
 } from './dto/leave-request.dto';
-import { LeaveStatus } from '../enums/leave-status.enum';
+import { LeaveStatus } from './enums/leave-status.enum';
 
 @Controller('leaves')
 @UseGuards(JwtAuthGuard, RolesGuard)

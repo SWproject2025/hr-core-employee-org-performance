@@ -1,15 +1,36 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { LeaveRequest, LeaveRequestDocument } from './leave-request.schema';
-import { LeaveType, LeaveTypeDocument } from './leave-type.schema';
-import { LeaveEntitlement, LeaveEntitlementDocument } from './leave-entitlement.schema';
-import { LeavePolicy, LeavePolicyDocument } from './leave-policy.schema';
-import { LeaveAdjustment, LeaveAdjustmentDocument } from './leave-adjustment.schema';
-import { Calendar, CalendarDocument } from './calendar.schema';
-import { LeaveStatus } from '../enums/leave-status.enum';
-import { AccrualMethod } from '../enums/accrual-method.enum';
-import { CreateLeaveRequestDto, UpdateLeaveRequestDto, ApproveLeaveRequestDto, RejectLeaveRequestDto } from './dto/leave-request.dto';
+import {
+  LeaveRequest,
+  LeaveRequestDocument,
+} from './models/leave-request.schema'; // Ensure this file exists and is correctly exported
+// If the file does not exist, create it or correct the import path.
+import { LeaveType, LeaveTypeDocument } from './models/leave-type.schema';
+import {
+  LeaveEntitlement,
+  LeaveEntitlementDocument,
+} from './models/leave-entitlement.schema';
+import { LeavePolicy, LeavePolicyDocument } from './models/leave-policy.schema';
+import {
+  LeaveAdjustment,
+  LeaveAdjustmentDocument,
+} from './models/leave-adjustment.schema';
+import { Calendar, CalendarDocument } from './models/calendar.schema';
+import { LeaveStatus } from './enums/leave-status.enum'; // Adjusted path to the correct location
+import { AccrualMethod } from './enums/accrual-method.enum'; // Adjust the path if necessary
+import {
+  CreateLeaveRequestDto,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  UpdateLeaveRequestDto,
+  ApproveLeaveRequestDto,
+  RejectLeaveRequestDto,
+} from './dto/leave-request.dto';
 
 @Injectable()
 export class LeavesService {
