@@ -1,19 +1,27 @@
 import axios from 'axios';
 
-// Configure axios instance
+// Configure axios instance - FIXED: Point to backend port
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  baseURL: 'http://localhost:3000', // Backend is on port 3000
   headers: {
     'Content-Type': 'application/json',
   }
 });
 
 // Add token to requests if available
+// IMPORTANT: Removed localStorage usage as it causes issues in artifacts
 api.interceptors.request.use(
   (config) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // If running in browser, try to get token
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (error) {
+        console.warn('Could not access localStorage:', error);
+      }
     }
     return config;
   },
@@ -27,13 +35,13 @@ export interface PayrollRun {
   _id: string;
   runId: string;
   payrollPeriod: Date;
-  status: string; // PayRollStatus enum values
+  status: string;
   entity: string;
   employees: number;
   exceptions: number;
   totalnetpay: number;
   payrollSpecialistId: string;
-  paymentStatus: string; // PayRollPaymentStatus enum values
+  paymentStatus: string;
   payrollManagerId?: string;
   financeStaffId?: string;
   rejectionReason?: string;
@@ -55,7 +63,7 @@ export interface SigningBonus {
   signingBonusId: string;
   givenAmount: number;
   paymentDate?: Date;
-  status: string; // BonusStatus enum values
+  status: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,7 +79,7 @@ export interface Benefit {
   benefitId: string;
   terminationId: string;
   givenAmount: number;
-  status: string; // BenefitStatus enum values
+  status: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -84,7 +92,7 @@ export interface EmployeePayrollDetails {
   deductions: number;
   netSalary: number;
   netPay: number;
-  bankStatus: string; // BankStatus enum values
+  bankStatus: string;
   exceptions?: string;
   bonus?: number;
   benefit?: number;
@@ -97,7 +105,6 @@ export interface EmployeePayrollDetails {
 const payrollService = {
   // ============ PAYROLL RUNS ============
   
-  // Get all payroll runs with filters
   getAllPayrollRuns: async (filters: { status?: string; entity?: string; startDate?: string; endDate?: string } = {}) => {
     try {
       const params: any = {};
@@ -114,7 +121,6 @@ const payrollService = {
     }
   },
 
-  // Get single payroll run by ID
   getPayrollRunById: async (id: string) => {
     try {
       const response = await api.get<PayrollRun>(`/payroll-execution/payroll-runs/${id}`);
@@ -125,7 +131,6 @@ const payrollService = {
     }
   },
 
-  // Create new payroll run (start payroll initiation)
   createPayrollRun: async (data: {
     runId: string;
     payrollPeriod: string;
@@ -141,7 +146,6 @@ const payrollService = {
     }
   },
 
-  // Delete payroll run (NOTE: You need to add this endpoint to your backend)
   deletePayrollRun: async (id: string) => {
     try {
       const response = await api.delete(`/payroll-execution/payroll-runs/${id}`);
@@ -152,7 +156,6 @@ const payrollService = {
     }
   },
 
-  // Edit payroll period
   editPayrollPeriod: async (id: string, payrollPeriod: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${id}/edit`, {
@@ -165,7 +168,6 @@ const payrollService = {
     }
   },
 
-  // Validate payroll period
   validatePayrollPeriod: async (payrollPeriod: string) => {
     try {
       const response = await api.post('/payroll-execution/payroll-period/validate', {
@@ -178,7 +180,6 @@ const payrollService = {
     }
   },
 
-  // Get suggested payroll period
   getSuggestedPayrollPeriod: async () => {
     try {
       const response = await api.get<{ payrollPeriod: string }>('/payroll-execution/payroll-period/suggested');
@@ -191,7 +192,6 @@ const payrollService = {
 
   // ============ SIGNING BONUSES ============
   
-  // Get all pending signing bonuses
   getPendingSigningBonuses: async () => {
     try {
       const response = await api.get<SigningBonus[]>('/payroll-execution/signing-bonuses/pending');
@@ -202,7 +202,6 @@ const payrollService = {
     }
   },
 
-  // Get signing bonus by ID
   getSigningBonusById: async (id: string) => {
     try {
       const response = await api.get<SigningBonus>(`/payroll-execution/signing-bonuses/${id}`);
@@ -213,7 +212,6 @@ const payrollService = {
     }
   },
 
-  // Approve signing bonus
   approveSigningBonus: async (id: string) => {
     try {
       const response = await api.patch<SigningBonus>(`/payroll-execution/signing-bonuses/${id}/approve`);
@@ -224,7 +222,6 @@ const payrollService = {
     }
   },
 
-  // Reject signing bonus
   rejectSigningBonus: async (id: string) => {
     try {
       const response = await api.patch<SigningBonus>(`/payroll-execution/signing-bonuses/${id}/reject`);
@@ -235,7 +232,6 @@ const payrollService = {
     }
   },
 
-  // Edit signing bonus
   editSigningBonus: async (id: string, givenAmount: number, paymentDate?: string) => {
     try {
       const payload: any = { givenAmount };
@@ -251,7 +247,6 @@ const payrollService = {
 
   // ============ BENEFITS ============
   
-  // Get all pending benefits
   getPendingBenefits: async () => {
     try {
       const response = await api.get<Benefit[]>('/payroll-execution/benefits/pending');
@@ -262,7 +257,6 @@ const payrollService = {
     }
   },
 
-  // Get benefit by ID
   getBenefitById: async (id: string) => {
     try {
       const response = await api.get<Benefit>(`/payroll-execution/benefits/${id}`);
@@ -273,7 +267,6 @@ const payrollService = {
     }
   },
 
-  // Approve benefit
   approveBenefit: async (id: string) => {
     try {
       const response = await api.patch<Benefit>(`/payroll-execution/benefits/${id}/approve`);
@@ -284,7 +277,6 @@ const payrollService = {
     }
   },
 
-  // Reject benefit
   rejectBenefit: async (id: string) => {
     try {
       const response = await api.patch<Benefit>(`/payroll-execution/benefits/${id}/reject`);
@@ -295,7 +287,6 @@ const payrollService = {
     }
   },
 
-  // Edit benefit
   editBenefit: async (id: string, givenAmount: number) => {
     try {
       const response = await api.patch<Benefit>(`/payroll-execution/benefits/${id}/edit`, {
@@ -310,7 +301,6 @@ const payrollService = {
 
   // ============ PRE-RUN CHECK ============
   
-  // Check pre-run approvals
   checkPreRunApprovals: async () => {
     try {
       const response = await api.get('/payroll-execution/pre-run-check');
@@ -323,7 +313,6 @@ const payrollService = {
 
   // ============ APPROVALS & WORKFLOW ============
   
-  // Publish draft for approval
   publishDraftForApproval: async (runId: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/publish`);
@@ -334,7 +323,6 @@ const payrollService = {
     }
   },
 
-  // Manager approve
   managerApprove: async (runId: string, approverId?: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/manager-approve`, {
@@ -347,7 +335,6 @@ const payrollService = {
     }
   },
 
-  // Manager reject
   managerReject: async (runId: string, reason: string, approverId?: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/manager-reject`, {
@@ -361,7 +348,6 @@ const payrollService = {
     }
   },
 
-  // Finance approve
   financeApprove: async (runId: string, approverId?: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/finance-approve`, {
@@ -374,7 +360,6 @@ const payrollService = {
     }
   },
 
-  // Finance reject
   financeReject: async (runId: string, reason: string, approverId?: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/finance-reject`, {
@@ -388,7 +373,6 @@ const payrollService = {
     }
   },
 
-  // Get approvals by run ID
   getApprovalsByRunId: async (runId: string) => {
     try {
       const response = await api.get(`/payroll-execution/payroll-runs/${runId}/approvals`);
@@ -401,7 +385,6 @@ const payrollService = {
 
   // ============ EXCEPTIONS ============
   
-  // Get payroll run exceptions
   getPayrollRunExceptions: async (runId: string) => {
     try {
       const response = await api.get(`/payroll-execution/payroll-runs/${runId}/exceptions`);
@@ -412,7 +395,6 @@ const payrollService = {
     }
   },
 
-  // Flag payroll exceptions
   flagPayrollExceptions: async (runId: string) => {
     try {
       const response = await api.post(`/payroll-execution/payroll-runs/${runId}/exceptions/flag`);
@@ -423,7 +405,6 @@ const payrollService = {
     }
   },
 
-  // Resolve exception
   resolveException: async (runId: string, employeeId: string, resolutionNote?: string) => {
     try {
       const response = await api.patch(
@@ -439,7 +420,6 @@ const payrollService = {
 
   // ============ PAYROLL ADJUSTMENTS ============
   
-  // Create payroll adjustment
   createPayrollAdjustment: async (
     runId: string,
     employeeId: string,
@@ -463,7 +443,6 @@ const payrollService = {
 
   // ============ PAYSLIPS ============
   
-  // Generate payslips
   generatePayslips: async (runId: string) => {
     try {
       const response = await api.post(`/payroll-execution/payroll-runs/${runId}/payslips/generate`);
@@ -474,7 +453,6 @@ const payrollService = {
     }
   },
 
-  // Distribute payslips
   distributePayslips: async (runId: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/payslips/distribute`);
@@ -485,7 +463,6 @@ const payrollService = {
     }
   },
 
-  // Mark payroll as paid
   markPayrollAsPaid: async (runId: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/mark-paid`);
@@ -498,7 +475,6 @@ const payrollService = {
 
   // ============ REVIEW ============
   
-  // Review payroll draft
   reviewPayrollDraft: async (runId: string) => {
     try {
       const response = await api.get(`/payroll-execution/payroll-runs/${runId}/review/draft`);
@@ -509,7 +485,6 @@ const payrollService = {
     }
   },
 
-  // Get payroll for manager review
   getPayrollForManagerReview: async (runId: string) => {
     try {
       const response = await api.get(`/payroll-execution/payroll-runs/${runId}/review/manager`);
@@ -520,7 +495,6 @@ const payrollService = {
     }
   },
 
-  // Get payroll for finance review
   getPayrollForFinanceReview: async (runId: string) => {
     try {
       const response = await api.get(`/payroll-execution/payroll-runs/${runId}/review/finance`);
@@ -533,7 +507,6 @@ const payrollService = {
 
   // ============ FREEZE/UNFREEZE ============
   
-  // Freeze payroll
   freezePayroll: async (runId: string, reason?: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/freeze`, {
@@ -546,7 +519,6 @@ const payrollService = {
     }
   },
 
-  // Unfreeze payroll
   unfreezePayroll: async (runId: string, unlockReason?: string) => {
     try {
       const response = await api.patch(`/payroll-execution/payroll-runs/${runId}/unfreeze`, {
@@ -558,6 +530,16 @@ const payrollService = {
       throw error.response?.data || error;
     }
   },
+
+getPayslips: async (runId: string) => {
+  try {
+    const response = await api.get(`/payroll-execution/payroll-runs/${runId}/payslips`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`Error fetching payslips for ${runId}:`, error.response?.data || error.message);
+    throw error.response?.data || error;
+  }
+},
 };
 
 export default payrollService;

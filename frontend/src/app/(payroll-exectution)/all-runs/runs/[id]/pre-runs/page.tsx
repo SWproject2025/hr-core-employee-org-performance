@@ -1,7 +1,49 @@
 "use client"
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, ArrowLeft, AlertCircle } from 'lucide-react';
-import payrollService from '@/lib/payrollService';
+import toast from 'react-hot-toast';
+
+// Mock payrollService
+const payrollService = {
+  getPendingSigningBonuses: async () => {
+    const response = await fetch('http://localhost:3000/payroll-execution/signing-bonuses/pending');
+    if (!response.ok) throw new Error('Failed to fetch');
+    return response.json();
+  },
+  getPendingBenefits: async () => {
+    const response = await fetch('http://localhost:3000/payroll-execution/benefits/pending');
+    if (!response.ok) throw new Error('Failed to fetch');
+    return response.json();
+  },
+  approveSigningBonus: async (id) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/approve`, {
+      method: 'PATCH'
+    });
+    if (!response.ok) throw new Error('Failed to approve');
+    return response.json();
+  },
+  rejectSigningBonus: async (id) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/reject`, {
+      method: 'PATCH'
+    });
+    if (!response.ok) throw new Error('Failed to reject');
+    return response.json();
+  },
+  approveBenefit: async (id) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/approve`, {
+      method: 'PATCH'
+    });
+    if (!response.ok) throw new Error('Failed to approve');
+    return response.json();
+  },
+  rejectBenefit: async (id) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/reject`, {
+      method: 'PATCH'
+    });
+    if (!response.ok) throw new Error('Failed to reject');
+    return response.json();
+  }
+};
 
 const PreRunApprovalsPage = () => {
   const [activeTab, setActiveTab] = useState('bonuses');
@@ -25,7 +67,7 @@ const PreRunApprovalsPage = () => {
       setBenefits(benefitsData);
     } catch (error) {
       console.error('Error fetching pending items:', error);
-      alert('Failed to fetch pending approvals: ' + (error.message || 'Unknown error'));
+      toast.error('Failed to fetch pending approvals: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -38,12 +80,12 @@ const PreRunApprovalsPage = () => {
       } else {
         await payrollService.approveBenefit(id);
       }
-      alert('Approved successfully');
+      toast.success('Approved successfully');
       setSelectedItems([]);
       fetchPendingItems();
     } catch (error) {
       console.error('Error approving:', error);
-      alert(error.message || 'Failed to approve');
+      toast.error(error.message || 'Failed to approve');
     }
   };
 
@@ -54,18 +96,18 @@ const PreRunApprovalsPage = () => {
       } else {
         await payrollService.rejectBenefit(id);
       }
-      alert('Rejected successfully');
+      toast.success('Rejected successfully');
       setSelectedItems([]);
       fetchPendingItems();
     } catch (error) {
       console.error('Error rejecting:', error);
-      alert(error.message || 'Failed to reject');
+      toast.error(error.message || 'Failed to reject');
     }
   };
 
   const handleBulkAction = async (action) => {
     if (selectedItems.length === 0) {
-      alert('Please select items first');
+      toast.error('Please select items first');
       return;
     }
 
@@ -74,18 +116,20 @@ const PreRunApprovalsPage = () => {
     
     if (!window.confirm(confirmMsg)) return;
 
+    const loadingToast = toast.loading(`Processing ${selectedItems.length} item(s)...`);
+
     try {
       await Promise.all(
         selectedItems.map(id => 
           action === 'approve' ? handleApprove(id, type) : handleReject(id, type)
         )
       );
-      alert(`Bulk ${action} completed successfully`);
+      toast.success(`Bulk ${action} completed successfully`, { id: loadingToast });
       setSelectedItems([]);
       fetchPendingItems();
     } catch (error) {
       console.error(`Bulk ${action} error:`, error);
-      alert(`Some items failed to ${action}`);
+      toast.error(`Some items failed to ${action}`, { id: loadingToast });
     }
   };
 
@@ -105,7 +149,7 @@ const PreRunApprovalsPage = () => {
   };
 
   const goBack = () => {
-    window.location.href = '/payroll/runs';
+    window.location.href = '/all-runs/runs';
   };
 
   return (

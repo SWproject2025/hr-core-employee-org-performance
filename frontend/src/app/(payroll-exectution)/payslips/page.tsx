@@ -1,10 +1,13 @@
-"use client"
+"use client";
 import React, { useState, useEffect } from 'react';
 import { Search, Download, Send, Eye, Printer, Mail, X, FileText } from 'lucide-react';
+
+const API_URL = 'http://localhost:3000';
 
 const FinalizedPayslipsPage = () => {
   const [payslips, setPayslips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     runId: '',
     employeeName: '',
@@ -16,62 +19,37 @@ const FinalizedPayslipsPage = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
 
-  // Mock data - replace with actual API call
-  const mockPayslips = [
-    {
-      _id: '1',
-      employeeName: 'Ahmed Hassan',
-      employeeCode: 'EMP001',
-      department: 'Engineering',
-      runPeriod: '2025-01-01',
-      grossSalary: 15000,
-      deductions: 3000,
-      netPay: 12000,
-      status: 'paid',
-      earnings: {
-        baseSalary: 10000,
-        allowances: 3000,
-        bonuses: 2000,
-        benefits: 0
-      },
-      deductionsBreakdown: {
-        taxes: 1500,
-        insurance: 1000,
-        penalties: 500
-      }
-    },
-    {
-      _id: '2',
-      employeeName: 'Fatima Ali',
-      employeeCode: 'EMP002',
-      department: 'Sales',
-      runPeriod: '2025-01-01',
-      grossSalary: 12000,
-      deductions: 2400,
-      netPay: 9600,
-      status: 'distributed',
-      earnings: {
-        baseSalary: 8000,
-        allowances: 2500,
-        bonuses: 1500,
-        benefits: 0
-      },
-      deductionsBreakdown: {
-        taxes: 1200,
-        insurance: 800,
-        penalties: 400
-      }
-    }
-  ];
-
   useEffect(() => {
-    // Simulate API call
-    setLoading(true);
-    setTimeout(() => {
-      setPayslips(mockPayslips);
+    fetchPayslips();
+  }, [filters.department]);
+
+  const fetchPayslips = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = new URLSearchParams();
+      if (filters.runId) params.append('runId', filters.runId);
+      if (filters.employeeName) params.append('employeeName', filters.employeeName);
+      if (filters.department) params.append('department', filters.department);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      
+      const response = await fetch(`${API_URL}/payroll-execution/payslips?${params}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch payslips');
+      }
+      
+      const data = await response.json();
+      setPayslips(data);
+    } catch (err: any) {
+      console.error('Error fetching payslips:', err);
+      setError(err.message || 'Failed to load payslips');
+    } finally {
       setLoading(false);
-    }, 500);
-  }, [filters]);
+    }
+  };
 
   const handleSelectPayslip = (id: string) => {
     setSelectedPayslips(prev =>
@@ -87,13 +65,31 @@ const FinalizedPayslipsPage = () => {
     }
   };
 
-  const handleViewDetail = (payslip: any) => {
-    setSelectedPayslip(payslip);
-    setShowDetailModal(true);
+  const handleViewDetail = async (payslip: any) => {
+    try {
+      // Fetch full payslip details
+      const response = await fetch(`${API_URL}/payroll-execution/payslips/${payslip._id}`);
+      if (!response.ok) throw new Error('Failed to fetch payslip details');
+      
+      const fullPayslip = await response.json();
+      setSelectedPayslip({
+        ...payslip,
+        ...fullPayslip
+      });
+      setShowDetailModal(true);
+    } catch (err: any) {
+      console.error('Error fetching payslip details:', err);
+      alert('Failed to load payslip details: ' + err.message);
+    }
   };
 
-  const handleDownload = (payslipId: string) => {
-    alert(`Downloading payslip ${payslipId}`);
+  const handleDownload = async (payslipId: string) => {
+    try {
+      // TODO: Implement PDF download endpoint
+      alert(`Downloading payslip ${payslipId}`);
+    } catch (err: any) {
+      alert('Failed to download payslip');
+    }
   };
 
   const handleBulkDownload = () => {
@@ -104,24 +100,47 @@ const FinalizedPayslipsPage = () => {
     alert(`Downloading ${selectedPayslips.length} payslips`);
   };
 
-  const handleBulkResend = () => {
+  const handleBulkResend = async () => {
     if (selectedPayslips.length === 0) {
       alert('Please select payslips first');
       return;
     }
-    alert(`Resending ${selectedPayslips.length} payslips`);
+    
+    try {
+      const promises = selectedPayslips.map(id =>
+        fetch(`${API_URL}/payroll-execution/payslips/${id}/resend`, {
+          method: 'POST'
+        })
+      );
+      
+      await Promise.all(promises);
+      alert(`Resent ${selectedPayslips.length} payslips successfully`);
+      setSelectedPayslips([]);
+    } catch (err: any) {
+      alert('Failed to resend some payslips');
+    }
   };
 
   const handlePrint = () => {
     window.print();
   };
 
-  const handleEmailPayslip = (email: string) => {
-    alert(`Sending payslip to ${email}`);
+  const handleEmailPayslip = async (payslipId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/payroll-execution/payslips/${payslipId}/resend`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) throw new Error('Failed to send email');
+      
+      alert('Payslip sent successfully');
+    } catch (err: any) {
+      alert('Failed to send payslip: ' + err.message);
+    }
   };
 
   const filteredPayslips = payslips.filter(payslip => {
-    const matchesEmployee = payslip.employeeName.toLowerCase().includes(filters.employeeName.toLowerCase());
+    const matchesEmployee = payslip.employeeName?.toLowerCase().includes(filters.employeeName.toLowerCase());
     const matchesDepartment = !filters.department || payslip.department === filters.department;
     return matchesEmployee && matchesDepartment;
   });
@@ -155,6 +174,13 @@ const FinalizedPayslipsPage = () => {
           )}
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800 text-sm">{error}</p>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -166,6 +192,7 @@ const FinalizedPayslipsPage = () => {
                   type="text"
                   value={filters.employeeName}
                   onChange={(e) => setFilters({ ...filters, employeeName: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && fetchPayslips()}
                   placeholder="Employee name..."
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
@@ -184,6 +211,8 @@ const FinalizedPayslipsPage = () => {
                 <option value="Sales">Sales</option>
                 <option value="Marketing">Marketing</option>
                 <option value="Finance">Finance</option>
+                <option value="HR">HR</option>
+                <option value="Operations">Operations</option>
               </select>
             </div>
 
@@ -207,6 +236,15 @@ const FinalizedPayslipsPage = () => {
               />
             </div>
           </div>
+          
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={fetchPayslips}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
+            >
+              Apply Filters
+            </button>
+          </div>
         </div>
 
         {/* Table */}
@@ -220,7 +258,7 @@ const FinalizedPayslipsPage = () => {
             <div className="p-12 text-center text-gray-500">
               <FileText size={48} className="mx-auto mb-4 text-gray-400" />
               <p className="text-lg">No payslips found</p>
-              <p className="text-sm mt-2">Try adjusting your filters</p>
+              <p className="text-sm mt-2">Try adjusting your filters or generate payslips first</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -230,7 +268,7 @@ const FinalizedPayslipsPage = () => {
                     <th className="px-6 py-3 text-left">
                       <input
                         type="checkbox"
-                        checked={selectedPayslips.length === filteredPayslips.length}
+                        checked={selectedPayslips.length === filteredPayslips.length && filteredPayslips.length > 0}
                         onChange={handleSelectAll}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
@@ -265,13 +303,13 @@ const FinalizedPayslipsPage = () => {
                         {new Date(payslip.runPeriod).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                        ${payslip.grossSalary.toLocaleString()}
+                        ${payslip.grossSalary?.toLocaleString() || 0}
                       </td>
                       <td className="px-6 py-4 text-sm text-red-600">
-                        -${payslip.deductions.toLocaleString()}
+                        -${payslip.deductions?.toLocaleString() || 0}
                       </td>
                       <td className="px-6 py-4 text-sm font-bold text-green-600">
-                        ${payslip.netPay.toLocaleString()}
+                        ${payslip.netPay?.toLocaleString() || 0}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -299,7 +337,7 @@ const FinalizedPayslipsPage = () => {
                             <Download size={18} />
                           </button>
                           <button
-                            onClick={() => handleEmailPayslip(payslip.employeeCode)}
+                            onClick={() => handleEmailPayslip(payslip._id)}
                             className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded"
                             title="Resend Email"
                           >
@@ -368,23 +406,23 @@ const FinalizedPayslipsPage = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-gray-600">Base Salary</span>
-                    <span className="font-semibold">${selectedPayslip.earnings.baseSalary.toLocaleString()}</span>
+                    <span className="font-semibold">${selectedPayslip.earnings?.baseSalary?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-gray-600">Allowances</span>
-                    <span className="font-semibold">${selectedPayslip.earnings.allowances.toLocaleString()}</span>
+                    <span className="font-semibold">${selectedPayslip.earnings?.allowances?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-gray-600">Bonuses</span>
-                    <span className="font-semibold">${selectedPayslip.earnings.bonuses.toLocaleString()}</span>
+                    <span className="font-semibold">${selectedPayslip.earnings?.bonuses?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-gray-600">Benefits</span>
-                    <span className="font-semibold">${selectedPayslip.earnings.benefits.toLocaleString()}</span>
+                    <span className="font-semibold">${selectedPayslip.earnings?.benefits?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between py-2 font-bold text-lg">
                     <span>Total Gross</span>
-                    <span className="text-green-600">${selectedPayslip.grossSalary.toLocaleString()}</span>
+                    <span className="text-green-600">${selectedPayslip.grossSalary?.toLocaleString() || 0}</span>
                   </div>
                 </div>
               </div>
@@ -395,19 +433,19 @@ const FinalizedPayslipsPage = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-gray-600">Taxes</span>
-                    <span className="font-semibold text-red-600">-${selectedPayslip.deductionsBreakdown.taxes.toLocaleString()}</span>
+                    <span className="font-semibold text-red-600">-${selectedPayslip.deductionsBreakdown?.taxes?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-gray-600">Insurance</span>
-                    <span className="font-semibold text-red-600">-${selectedPayslip.deductionsBreakdown.insurance.toLocaleString()}</span>
+                    <span className="font-semibold text-red-600">-${selectedPayslip.deductionsBreakdown?.insurance?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-gray-600">Penalties</span>
-                    <span className="font-semibold text-red-600">-${selectedPayslip.deductionsBreakdown.penalties.toLocaleString()}</span>
+                    <span className="font-semibold text-red-600">-${selectedPayslip.deductionsBreakdown?.penalties?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between py-2 font-bold text-lg">
                     <span>Total Deductions</span>
-                    <span className="text-red-600">-${selectedPayslip.deductions.toLocaleString()}</span>
+                    <span className="text-red-600">-${selectedPayslip.deductions?.toLocaleString() || 0}</span>
                   </div>
                 </div>
               </div>
@@ -417,7 +455,7 @@ const FinalizedPayslipsPage = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-xl font-bold">Net Pay</span>
                   <span className="text-3xl font-bold text-blue-600">
-                    ${selectedPayslip.netPay.toLocaleString()}
+                    ${selectedPayslip.netPay?.toLocaleString() || 0}
                   </span>
                 </div>
               </div>
@@ -439,7 +477,7 @@ const FinalizedPayslipsPage = () => {
                   Download PDF
                 </button>
                 <button
-                  onClick={() => handleEmailPayslip(selectedPayslip.employeeCode)}
+                  onClick={() => handleEmailPayslip(selectedPayslip._id)}
                   className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
                 >
                   <Mail size={18} />

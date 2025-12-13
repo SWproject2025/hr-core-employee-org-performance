@@ -1,7 +1,32 @@
 "use client"
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Trash2, Eye, Calendar } from 'lucide-react';
-import payrollService from '@/lib/payrollService';
+import toast from 'react-hot-toast';
+
+// Mock payrollService for demonstration
+const payrollService = {
+  getAllPayrollRuns: async (filters) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/payroll-runs?${new URLSearchParams(filters)}`);
+    if (!response.ok) throw new Error('Failed to fetch');
+    return response.json();
+  },
+  createPayrollRun: async (data) => {
+    const response = await fetch('http://localhost:3000/payroll-execution/payroll-runs/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to create');
+    return response.json();
+  },
+  deletePayrollRun: async (id) => {
+    const response = await fetch(`http://localhost:3000/payroll-execution/payroll-runs/${id}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) throw new Error('Failed to delete');
+    return response.json();
+  }
+};
 
 const AllRunsPage = () => {
   const [runs, setRuns] = useState([]);
@@ -35,7 +60,7 @@ const AllRunsPage = () => {
       setRuns(filteredData);
     } catch (error) {
       console.error('Error fetching payroll runs:', error);
-      alert('Failed to fetch payroll runs: ' + (error.message || 'Unknown error'));
+      toast.error('Failed to fetch payroll runs: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -46,16 +71,16 @@ const AllRunsPage = () => {
     
     try {
       await payrollService.deletePayrollRun(runId);
-      alert('Payroll run deleted successfully');
+      toast.success('Payroll run deleted successfully');
       fetchPayrollRuns();
     } catch (error) {
       console.error('Error deleting run:', error);
-      alert(error.message || 'Failed to delete payroll run');
+      toast.error(error.message || 'Failed to delete payroll run');
     }
   };
 
   const handleViewPreRun = (runId) => {
-    window.location.href = `/payroll/runs/${runId}/pre-run`;
+    window.location.href = `/all-runs/runs/${runId}/pre-runs`;
   };
 
   const getStatusBadge = (status) => {
@@ -228,16 +253,16 @@ const AllRunsPage = () => {
 
 const CreateRunModal = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
-    runId: `PR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    runId: `PR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`,
     payrollPeriod: '',
-    payrollSpecialistId: '',
+    payrollSpecialistId: '693d1ae98187544b541daec4', // Pre-filled with test employee ID
     entity: ''
   });
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!formData.runId || !formData.payrollPeriod || !formData.entity || !formData.payrollSpecialistId) {
-      alert('Please fill in all fields');
+      toast.error('Please fill in all fields');
       return;
     }
     
@@ -245,11 +270,11 @@ const CreateRunModal = ({ onClose, onSuccess }) => {
     
     try {
       await payrollService.createPayrollRun(formData);
-      alert('Payroll run created successfully');
+      toast.success('Payroll run created successfully');
       onSuccess();
     } catch (error) {
       console.error('Error creating run:', error);
-      alert(error.message || 'Failed to create payroll run');
+      toast.error(error.message || 'Failed to create payroll run');
     } finally {
       setLoading(false);
     }
@@ -297,9 +322,11 @@ const CreateRunModal = ({ onClose, onSuccess }) => {
               type="text"
               value={formData.payrollSpecialistId}
               onChange={(e) => setFormData({ ...formData, payrollSpecialistId: e.target.value })}
-              placeholder="Employee ID..."
+              placeholder="Employee Object ID..."
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              title="Use the MongoDB ObjectId from your employee (e.g., 693d1ae98187544b541daec4)"
             />
+            <p className="text-xs text-gray-500 mt-1">Use the MongoDB ObjectId (e.g., 693d1ae98187544b541daec4)</p>
           </div>
 
           <div className="flex gap-3 pt-4">

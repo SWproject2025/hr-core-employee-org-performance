@@ -48,6 +48,7 @@ export const Sidebar = () => {
       },
       { id: 'reports', icon: TrendingUp, label: 'Reports', path: '/reports' }
     ];
+  
 
     function handleClick (id : string, path: string) 
     {

@@ -96,6 +96,156 @@ async getAllPayrollRuns(filters?: any) {
     return await signingBonus.save();
   }
 
+  
+  // Fixed getAllPayslips method for PayrollExecutionService
+// Based on actual schema structure
+
+async getAllPayslips(
+  runId?: string,
+  employeeName?: string,
+  department?: string,
+) {
+  const query: any = {};
+  
+  if (runId) {
+    const runObjectId = await this._resolveRunObjectId(runId);
+    query.payrollRunId = runObjectId;
+  }
+  
+  let payslips = await this.payslipModel
+    .find(query)
+    .populate('employeeId', 'firstName lastName email code department')
+    .populate('payrollRunId')
+    .exec();
+  
+  // Filter by employee name
+  if (employeeName) {
+    payslips = payslips.filter((p) => {
+      const emp = p.employeeId as any;
+      if (!emp) return false;
+      const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
+      return fullName.includes(employeeName.toLowerCase());
+    });
+  }
+  
+  // Filter by department
+  if (department) {
+    payslips = payslips.filter((p) => {
+      const emp = p.employeeId as any;
+      return emp && emp.department === department;
+    });
+  }
+  
+  // Map to frontend format
+  return payslips.map((payslip) => {
+    const emp = payslip.employeeId as any;
+    const run = payslip.payrollRunId as any;
+    
+    // Calculate allowances - allowance schema likely has 'amount' property
+    const allowancesTotal = Array.isArray(payslip.earningsDetails?.allowances)
+      ? payslip.earningsDetails.allowances.reduce(
+          (sum, a: any) => sum + (a.amount || 0),
+          0
+        )
+      : 0;
+    
+    // Calculate bonuses - signingBonus schema uses 'givenAmount' property
+    const bonusesTotal = Array.isArray(payslip.earningsDetails?.bonuses)
+      ? payslip.earningsDetails.bonuses.reduce(
+          (sum, b: any) => sum + (b.givenAmount || 0),
+          0
+        )
+      : 0;
+    
+    // Calculate benefits - terminationAndResignationBenefits schema uses 'givenAmount' property
+    const benefitsTotal = Array.isArray(payslip.earningsDetails?.benefits)
+      ? payslip.earningsDetails.benefits.reduce(
+          (sum, b: any) => sum + (b.givenAmount || 0),
+          0
+        )
+      : 0;
+    
+    // Calculate refunds if present
+    const refundsTotal = Array.isArray(payslip.earningsDetails?.refunds)
+      ? payslip.earningsDetails.refunds.reduce(
+          (sum, r: any) => sum + (r.amount || 0),
+          0
+        )
+      : 0;
+    
+    // Calculate taxes - taxRules schema likely has 'amount' property
+    const taxesTotal = Array.isArray(payslip.deductionsDetails?.taxes)
+      ? payslip.deductionsDetails.taxes.reduce(
+          (sum, t: any) => sum + (t.amount || 0),
+          0
+        )
+      : 0;
+    
+    // Calculate insurance - insuranceBrackets schema likely has 'amount' property
+    const insuranceTotal = Array.isArray(payslip.deductionsDetails?.insurances)
+      ? payslip.deductionsDetails.insurances.reduce(
+          (sum, i: any) => sum + (i.amount || 0),
+          0
+        )
+      : 0;
+    
+    // Calculate penalties - employeePenalties has nested structure
+    let penaltiesTotal = 0;
+    if (payslip.deductionsDetails?.penalties) {
+      const penalties = payslip.deductionsDetails.penalties as any;
+      // employeePenalties schema has a 'penalties' array property
+      if (Array.isArray(penalties.penalties)) {
+        penaltiesTotal = penalties.penalties.reduce(
+          (sum: number, p: any) => sum + (p.amount || 0),
+          0
+        );
+      }
+    }
+    
+    return {
+      _id: payslip._id,
+      employeeId: emp?._id,
+      employeeName: emp
+        ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim()
+        : 'Unknown',
+      employeeCode: emp?.code || emp?._id || 'N/A',
+      department: emp?.department || 'N/A',
+      runPeriod: run?.payrollPeriod || new Date(),
+      grossSalary: payslip.totalGrossSalary || 0,
+      deductions: payslip.totaDeductions || 0,
+      netPay: payslip.netPay || 0,
+      status: payslip.paymentStatus || 'pending',
+      earnings: {
+        baseSalary: payslip.earningsDetails?.baseSalary || 0,
+        allowances: allowancesTotal,
+        bonuses: bonusesTotal,
+        benefits: benefitsTotal,
+        refunds: refundsTotal,
+      },
+      deductionsBreakdown: {
+        taxes: taxesTotal,
+        insurance: insuranceTotal,
+        penalties: penaltiesTotal,
+      },
+    };
+  });
+}
+
+async getPayslipById(id: string) {
+  const payslip = await this.payslipModel
+    .findById(id)
+    .populate('employeeId')
+    .populate('payrollRunId')
+    .exec();
+  
+  if (!payslip) {
+    throw new NotFoundException('Payslip not found');
+  }
+  
+  return payslip;
+}
+
+
   async editSigningBonus(id: string, givenAmount: number, paymentDate?: Date) {
     const signingBonus = await this.employeeSigningBonusModel.findById(id);
     if (!signingBonus) {
