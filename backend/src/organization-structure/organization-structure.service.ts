@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   BadRequestException,
   Injectable,
@@ -5,10 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  Department,
-  DepartmentDocument,
-} from './models/department.schema';
+import { Department, DepartmentDocument } from './models/department.schema';
 import { Position, PositionDocument } from './models/position.schema';
 import {
   JobRequisition,
@@ -34,7 +32,7 @@ export class OrganizationStructureService {
 
   // Departments
 
-  async createDepartment(dto: CreateDepartmentDto): Promise<Department> {
+  async createDepartment(dto: CreateDepartmentDto): Promise<DepartmentDocument> {
     const existing = await this.departmentModel
       .findOne({ code: dto.code })
       .lean()
@@ -60,7 +58,7 @@ export class OrganizationStructureService {
   async updateDepartment(
     id: string,
     dto: UpdateDepartmentDto,
-  ): Promise<Department> {
+  ): Promise<DepartmentDocument> {
     const department = await this.departmentModel
       .findById(id)
       .exec();
@@ -81,7 +79,7 @@ export class OrganizationStructureService {
     return department.save();
   }
 
-  async deactivateDepartment(id: string): Promise<Department> {
+  async deactivateDepartment(id: string): Promise<DepartmentDocument> {
     const department = await this.departmentModel
       .findById(id)
       .exec();
@@ -99,19 +97,20 @@ export class OrganizationStructureService {
     await department.save();
 
     // Delimit all positions under this department
+    const departmentObjectId = new Types.ObjectId(id);
     await this.positionModel.updateMany(
-      { departmentId: department._id, active: true },
+      { departmentId: departmentObjectId, active: true },
       { $set: { active: false, endDate } },
     );
 
     return department;
   }
 
-  async listDepartments(): Promise<Department[]> {
+  async listDepartments(): Promise<DepartmentDocument[]> {
     return this.departmentModel.find().exec();
   }
 
-  async getDepartmentById(id: string): Promise<Department> {
+  async getDepartmentById(id: string): Promise<DepartmentDocument> {
     const department = await this.departmentModel
       .findById(id)
       .exec();
@@ -138,7 +137,7 @@ export class OrganizationStructureService {
     return objectId;
   }
 
-  async createPosition(dto: CreatePositionDto): Promise<Position> {
+  async createPosition(dto: CreatePositionDto): Promise<PositionDocument> {
     const existing = await this.positionModel
       .findOne({ code: dto.code })
       .lean()
@@ -174,7 +173,7 @@ export class OrganizationStructureService {
   async updatePosition(
     id: string,
     dto: UpdatePositionDto,
-  ): Promise<Position> {
+  ): Promise<PositionDocument> {
     const position = await this.positionModel.findById(id).exec();
     if (!position) {
       throw new NotFoundException('Position not found');
@@ -207,7 +206,7 @@ export class OrganizationStructureService {
     return position.save();
   }
 
-  async deactivatePosition(id: string): Promise<Position> {
+  async deactivatePosition(id: string): Promise<PositionDocument> {
     const position = await this.positionModel.findById(id).exec();
     if (!position) {
       throw new NotFoundException('Position not found');
@@ -224,14 +223,14 @@ export class OrganizationStructureService {
     return position.save();
   }
 
-  async listPositions(): Promise<Position[]> {
+  async listPositions(): Promise<PositionDocument[]> {
     return this.positionModel
       .find()
       .populate('departmentId')
       .exec();
   }
 
-  async getPositionById(id: string): Promise<Position> {
+  async getPositionById(id: string): Promise<PositionDocument> {
     const position = await this.positionModel
       .findById(id)
       .populate('departmentId')
@@ -246,9 +245,10 @@ export class OrganizationStructureService {
 
   private async ensureActivePosition(
     positionId: string,
-  ): Promise<Position> {
+  ): Promise<PositionDocument> {
+    const objectId = new Types.ObjectId(positionId);
     const position = await this.positionModel
-      .findOne({ _id: positionId, active: true })
+      .findOne({ _id: objectId, active: true })
       .exec();
     if (!position) {
       throw new BadRequestException(
@@ -260,13 +260,15 @@ export class OrganizationStructureService {
 
   async createJobRequisition(
     dto: CreateJobRequisitionDto,
-  ): Promise<JobRequisition> {
+  ): Promise<JobRequisitionDocument> {
     const departmentObjectId = await this.ensureActiveDepartment(
       dto.departmentId,
     );
     const position = await this.ensureActivePosition(dto.positionId);
 
-    if (!position.departmentId.equals(departmentObjectId)) {
+    // Compare ObjectIds properly
+    const positionDeptId = position.departmentId as Types.ObjectId;
+    if (!positionDeptId.equals(departmentObjectId)) {
       throw new BadRequestException(
         'Position must belong to the specified department',
       );
@@ -281,7 +283,7 @@ export class OrganizationStructureService {
     const jobReq = new this.jobReqModel({
       jobTitle: dto.jobTitle,
       departmentId: departmentObjectId,
-      positionId: position._id,
+      positionId: new Types.ObjectId(position.id),
       location: dto.location,
       openings: dto.openings,
       qualifications: dto.qualifications ?? [],
@@ -295,7 +297,7 @@ export class OrganizationStructureService {
   async updateJobRequisition(
     id: string,
     dto: UpdateJobRequisitionDto,
-  ): Promise<JobRequisition> {
+  ): Promise<JobRequisitionDocument> {
     const jobReq = await this.jobReqModel.findById(id).exec();
     if (!jobReq) {
       throw new NotFoundException('Job requisition not found');
@@ -308,12 +310,12 @@ export class OrganizationStructureService {
 
     if (dto.positionId) {
       const position = await this.ensureActivePosition(dto.positionId);
-      jobReq.positionId = position._id;
+      jobReq.positionId = new Types.ObjectId(position.id);
 
       if (dto.departmentId) {
-        // already validated via ensureActiveDepartment
         const deptId = jobReq.departmentId as Types.ObjectId;
-        if (!position.departmentId.equals(deptId)) {
+        const positionDeptId = position.departmentId as Types.ObjectId;
+        if (!positionDeptId.equals(deptId)) {
           throw new BadRequestException(
             'Position must belong to the specified department',
           );
@@ -339,7 +341,7 @@ export class OrganizationStructureService {
     return jobReq.save();
   }
 
-  async closeJobRequisition(id: string): Promise<JobRequisition> {
+  async closeJobRequisition(id: string): Promise<JobRequisitionDocument> {
     const jobReq = await this.jobReqModel.findById(id).exec();
     if (!jobReq) {
       throw new NotFoundException('Job requisition not found');
@@ -349,7 +351,7 @@ export class OrganizationStructureService {
     return jobReq.save();
   }
 
-  async listJobRequisitions(): Promise<JobRequisition[]> {
+  async listJobRequisitions(): Promise<JobRequisitionDocument[]> {
     return this.jobReqModel
       .find()
       .populate('departmentId')
@@ -357,7 +359,7 @@ export class OrganizationStructureService {
       .exec();
   }
 
-  async getJobRequisitionById(id: string): Promise<JobRequisition> {
+  async getJobRequisitionById(id: string): Promise<JobRequisitionDocument> {
     const jobReq = await this.jobReqModel
       .findById(id)
       .populate('departmentId')
