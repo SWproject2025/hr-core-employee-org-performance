@@ -31,7 +31,6 @@ export class PayrollExecutionService {
     private payslipModel: Model<paySlip>,
     @InjectModel(EmployeeProfile.name)
     private employeeModel: Model<EmployeeProfile>,
-    // ✅ Inject CalcDraftService
     private calcDraftService: CalcDraftService,
   ) {}
 

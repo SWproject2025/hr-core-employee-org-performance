@@ -1,10 +1,12 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import { Check, X, Lock, Send, FileText, Clock, AlertCircle, CheckCircle, Unlock } from 'lucide-react';
+import { Check, X, Lock, Send, FileText, AlertCircle, CheckCircle, Unlock } from 'lucide-react';
+import { useParams } from 'next/navigation';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"
 
-const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
+
+const ApprovalsExecutionPage = () => {
   const [payrollRun, setPayrollRun] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -12,23 +14,31 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
   const [modalType, setModalType] = useState<'approve' | 'reject' | 'freeze' | 'unfreeze'>('approve');
   const [reason, setReason] = useState('');
   const [currentRole, setCurrentRole] = useState<'specialist' | 'manager' | 'finance'>('specialist');
-
-  const runId = params.id;
+  const  runId = useParams().id
 
   useEffect(() => {
-    fetchData();
+    if (runId) {
+      fetchData();
+    }
   }, [runId]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      // Changed to use runId consistently
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}`);
+      
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to fetch payroll run');
+        const errorData = await response.json().catch(() => ({ message: 'Failed to fetch payroll run' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
+      
       const data = await response.json();
       setPayrollRun(data);
     } catch (error: any) {
@@ -39,16 +49,27 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
     }
   };
 
+  const makeRequest = async (url: string, method: string = 'PATCH', body?: any) => {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        'Content-Type': 'application/json'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Request failed: ${response.status}`);
+    }
+
+    return response.json();
+  };
+
   const handlePublish = async () => {
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/publish`, {
-        method: 'PATCH'
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to publish');
-      }
+      await makeRequest(`${API_URL}/payroll-execution/payroll-runs/${runId}/publish`);
       alert('Payroll published for approval');
       fetchData();
     } catch (error: any) {
@@ -58,16 +79,11 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleManagerApprove = async () => {
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/manager-approve`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approverId: 'current-user-id' })
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to approve');
-      }
+      await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/manager-approve`,
+        'PATCH',
+        { approverId: 'demo-manager-id' }
+      );
       alert('Manager approved successfully');
       setShowModal(false);
       fetchData();
@@ -82,19 +98,11 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
       return;
     }
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/manager-reject`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          reason,
-          approverId: 'current-user-id'
-        })
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to reject');
-      }
+      await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/manager-reject`,
+        'PATCH',
+        { reason, approverId: 'demo-manager-id' }
+      );
       alert('Manager rejected successfully');
       setShowModal(false);
       setReason('');
@@ -106,16 +114,11 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleFinanceApprove = async () => {
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/finance-approve`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approverId: 'current-user-id' })
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to approve');
-      }
+      await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-approve`,
+        'PATCH',
+        { approverId: 'demo-finance-id' }
+      );
       alert('Finance approved successfully');
       setShowModal(false);
       fetchData();
@@ -130,19 +133,11 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
       return;
     }
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/finance-reject`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          reason,
-          approverId: 'current-user-id'
-        })
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to reject');
-      }
+      await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-reject`,
+        'PATCH',
+        { reason, approverId: 'demo-finance-id' }
+      );
       alert('Finance rejected successfully');
       setShowModal(false);
       setReason('');
@@ -154,16 +149,11 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleFreeze = async () => {
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/freeze`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason })
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to freeze');
-      }
+      await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/freeze`,
+        'PATCH',
+        { reason: reason || undefined }
+      );
       alert('Payroll frozen successfully');
       setShowModal(false);
       setReason('');
@@ -175,16 +165,11 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
 
   const handleUnfreeze = async () => {
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/unfreeze`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unlockReason: reason })
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to unfreeze');
-      }
+      await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/unfreeze`,
+        'PATCH',
+        { unlockReason: reason || undefined }
+      );
       alert('Payroll unfrozen successfully');
       setShowModal(false);
       setReason('');
@@ -197,16 +182,11 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
   const handleGeneratePayslips = async () => {
     if (!confirm('Generate payslips for this payroll run?')) return;
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/payslips/generate`, {
-        method: 'POST'
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to generate payslips');
-      }
-      const data = await response.json();
-      alert(`Generated ${data.count} payslips successfully`);
+      const data = await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/payslips/generate`,
+        'POST'
+      );
+      alert(`Generated ${data.count || 0} payslips successfully`);
       fetchData();
     } catch (error: any) {
       alert(error.message || 'Failed to generate payslips');
@@ -216,16 +196,10 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
   const handleDistributePayslips = async () => {
     if (!confirm('Distribute payslips to employees?')) return;
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/payslips/distribute`, {
-        method: 'PATCH'
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to distribute payslips');
-      }
-      const data = await response.json();
-      alert(`Distributed payslips successfully (${data.modifiedCount} updated)`);
+      const data = await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/payslips/distribute`
+      );
+      alert(`Distributed payslips successfully (${data.modifiedCount || 0} updated)`);
       fetchData();
     } catch (error: any) {
       alert(error.message || 'Failed to distribute payslips');
@@ -235,16 +209,10 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
   const handleMarkAsPaid = async () => {
     if (!confirm('Mark all payslips as paid? This action indicates payment has been processed.')) return;
     try {
-      // Changed to use runId
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/mark-paid`, {
-        method: 'PATCH'
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to mark as paid');
-      }
-      const data = await response.json();
-      alert(`Marked ${data.modifiedCount} payslips as paid`);
+      const data = await makeRequest(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/mark-paid`
+      );
+      alert(`Marked ${data.modifiedCount || 0} payslips as paid`);
       fetchData();
     } catch (error: any) {
       alert(error.message || 'Failed to mark as paid');
@@ -279,9 +247,8 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
     );
   }
 
-  // Map backend status to frontend display
   const normalizeStatus = (status: string) => {
-    const statusMap: any = {
+    const statusMap: Record<string, string> = {
       'DRAFT': 'draft',
       'UNDER_REVIEW': 'under_review',
       'PENDING_FINANCE_APPROVAL': 'pending_finance_approval',
@@ -296,7 +263,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
   const currentStatus = normalizeStatus(payrollRun.status);
 
   const getStepStatus = (status: string) => {
-    const statusMap: any = {
+    const statusMap: Record<string, number> = {
       'draft': 0,
       'under_review': 1,
       'pending_finance_approval': 2,
@@ -343,7 +310,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
           </div>
         </div>
 
-        {/* Role Selector (for demo/testing) */}
+        {/* Role Selector */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm font-medium text-blue-900 mb-2">Current Role (Demo):</p>
           <div className="flex gap-2">
@@ -380,7 +347,7 @@ const ApprovalsExecutionPage = ({ params }: { params: { id: string } }) => {
           </div>
         </div>
 
-        {/* Approval Chain Stepper */}
+        {/* Approval Progress Stepper */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-xl font-semibold mb-6">Approval Progress</h2>
           <div className="flex items-center justify-between">

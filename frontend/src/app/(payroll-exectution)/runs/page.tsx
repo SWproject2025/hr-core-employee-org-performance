@@ -17,13 +17,17 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Check if run can be edited
+  const canEdit = run?.status === 'DRAFT' || run?.status === 'REJECTED';
+
   const handleSubmit = async () => {
-    if (!formData.runId || !formData.payrollPeriod || !formData.entity) {
-      setError('Please fill in all required fields');
+    // Validation
+    if (!formData.payrollPeriod) {
+      setError('Payroll period is required');
       return;
     }
 
-    if (run.status !== 'DRAFT' && run.status !== 'REJECTED') {
+    if (!canEdit) {
       setError('Can only edit runs in DRAFT or REJECTED status');
       return;
     }
@@ -32,19 +36,29 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
     setError(null);
     
     try {
-      const periodResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${run._id}/edit`, {
+      // Use the correct endpoint and run ID from the backend
+      const runIdentifier = run._id || run.id;
+      
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runIdentifier}/edit`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        },
         body: JSON.stringify({
           payrollPeriod: new Date(formData.payrollPeriod).toISOString()
         })
       });
 
-      if (!periodResponse.ok) {
-        const errorData = await periodResponse.json();
-        throw new Error(errorData.message || 'Failed to update payroll run');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to update payroll run (${response.status})`);
       }
 
+      const result = await response.json();
+      console.log('Update successful:', result);
+      
+      // Close modal and trigger success callback
       onSuccess();
     } catch (err) {
       console.error('Error updating payroll run:', err);
@@ -62,25 +76,31 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
             <h2 className="text-2xl font-bold text-gray-900">Edit Payroll Run</h2>
             <p className="text-gray-600 text-sm mt-1">Modify payroll run details</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
+          <button 
+            onClick={onClose} 
+            className="text-gray-400 hover:text-gray-600 transition"
+            type="button"
+          >
             <X size={24} />
           </button>
         </div>
 
-        {run.status !== 'DRAFT' && run.status !== 'REJECTED' && (
+        {/* Status Warning */}
+        {!canEdit && (
           <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-start gap-3">
               <AlertCircle className="text-yellow-600 mt-0.5 flex-shrink-0" size={20} />
               <div className="flex-1">
                 <p className="font-semibold text-yellow-900">Limited Editing</p>
                 <p className="text-sm text-yellow-800 mt-1">
-                  This run is in {run.status} status. Only DRAFT or REJECTED runs can be edited.
+                  This run is in <strong>{run?.status}</strong> status. Only DRAFT or REJECTED runs can be edited.
                 </p>
               </div>
             </div>
           </div>
         )}
 
+        {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
             <AlertCircle className="text-red-600 mt-0.5 flex-shrink-0" size={20} />
@@ -92,17 +112,19 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
         )}
 
         <div className="space-y-5">
+          {/* Run ID - Read Only */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Run ID</label>
             <input
               type="text"
               value={formData.runId}
               disabled
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
             />
             <p className="text-xs text-gray-500 mt-1">Run ID cannot be changed</p>
           </div>
 
+          {/* Payroll Period - Editable */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               <Calendar className="inline mr-1" size={16} />
@@ -112,11 +134,19 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
               type="date"
               value={formData.payrollPeriod}
               onChange={(e) => setFormData({ ...formData, payrollPeriod: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              disabled={run.status !== 'DRAFT' && run.status !== 'REJECTED'}
+              className={`w-full px-4 py-2.5 border rounded-lg transition ${
+                canEdit 
+                  ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                  : 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+              }`}
+              disabled={!canEdit}
             />
+            {canEdit && (
+              <p className="text-xs text-gray-500 mt-1">Select the payroll period end date</p>
+            )}
           </div>
 
+          {/* Entity - Read Only */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               <Building2 className="inline mr-1" size={16} />
@@ -126,11 +156,12 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
               type="text"
               value={formData.entity}
               disabled
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
             />
             <p className="text-xs text-gray-500 mt-1">Entity cannot be changed after creation</p>
           </div>
 
+          {/* Payroll Specialist ID - Read Only */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               <User className="inline mr-1" size={16} />
@@ -140,22 +171,38 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
               type="text"
               value={formData.payrollSpecialistId}
               disabled
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 font-mono text-sm"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 font-mono text-sm cursor-not-allowed"
             />
             <p className="text-xs text-gray-500 mt-1">Specialist cannot be changed</p>
           </div>
 
-          <div className="flex gap-3 pt-4">
+          {/* Current Status Display */}
+          <div className="pt-2 pb-2 px-4 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-xs font-medium text-gray-600 mb-1">Current Status</p>
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+              run?.status === 'DRAFT' ? 'bg-gray-200 text-gray-800' :
+              run?.status === 'REJECTED' ? 'bg-red-200 text-red-800' :
+              run?.status === 'APPROVED' ? 'bg-green-200 text-green-800' :
+              'bg-blue-200 text-blue-800'
+            }`}>
+              {run?.status?.replace(/_/g, ' ') || 'Unknown'}
+            </span>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4 border-t">
             <button
+              type="button"
               onClick={onClose}
               disabled={loading}
-              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition disabled:opacity-50"
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSubmit}
-              disabled={loading || (run.status !== 'DRAFT' && run.status !== 'REJECTED')}
+              disabled={loading || !canEdit}
               className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
             >
               {loading ? (
@@ -173,6 +220,7 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
     </div>
   );
 };
+
 
 // Create Run Modal Component
 const CreateRunModal = ({ onClose, onSuccess }) => {
