@@ -970,17 +970,19 @@ export class PayrollExecutionService {
 
   async reviewPayrollDraft(payrollRunId: string) {
     const runObjectId = await this._resolveRunObjectId(payrollRunId);
-
+  
     const run = await this.payrollRunsModel
       .findById(runObjectId)
       .populate('payrollSpecialistId', 'firstName lastName email');
-
+  
     if (!run) throw new NotFoundException('Payroll run not found');
-
-    const details = await this.employeePayrollDetailsModel.find({
-      payrollRunId: runObjectId,
-    });
-
+  
+    // ✅ ADD .populate() HERE to include employee details
+    const details = await this.employeePayrollDetailsModel
+      .find({ payrollRunId: runObjectId })
+      .populate('employeeId', 'firstName lastName email code department bankAccountDetails') // ← Add this line
+      .exec();
+  
     return {
       run,
       summary: {
@@ -994,18 +996,20 @@ export class PayrollExecutionService {
 
   async getPayrollForManagerReview(payrollRunId: string) {
     const runObjectId = await this._resolveRunObjectId(payrollRunId);
-
+  
     const run = await this.payrollRunsModel
       .findById(runObjectId)
       .populate('payrollSpecialistId', 'firstName lastName email')
       .populate('payrollManagerId', 'firstName lastName email');
-
+  
     if (!run) throw new NotFoundException('Payroll run not found');
-
-    const details = await this.employeePayrollDetailsModel.find({
-      payrollRunId: runObjectId,
-    });
-
+  
+    // ✅ ADD .populate() HERE
+    const details = await this.employeePayrollDetailsModel
+      .find({ payrollRunId: runObjectId })
+      .populate('employeeId', 'firstName lastName email code department bankAccountDetails')
+      .exec();
+  
     return {
       runId: run.runId,
       reviewerRole: 'PAYROLL_MANAGER',
@@ -1021,28 +1025,30 @@ export class PayrollExecutionService {
       employees: details,
     };
   }
-
+  
   async getPayrollForFinanceReview(payrollRunId: string) {
     const runObjectId = await this._resolveRunObjectId(payrollRunId);
-
+  
     const run = await this.payrollRunsModel
       .findById(runObjectId)
       .populate('payrollSpecialistId', 'firstName lastName email')
       .populate('financeStaffId', 'firstName lastName email')
       .populate('payrollManagerId', 'firstName lastName email');
-
+  
     if (!run) throw new NotFoundException('Payroll run not found');
-
+  
     if (!run.managerApprovalDate) {
       throw new BadRequestException(
         'Payroll cannot be reviewed by finance before manager approval',
       );
     }
-
-    const details = await this.employeePayrollDetailsModel.find({
-      payrollRunId: runObjectId,
-    });
-
+  
+    // ✅ ADD .populate() HERE
+    const details = await this.employeePayrollDetailsModel
+      .find({ payrollRunId: runObjectId })
+      .populate('employeeId', 'firstName lastName email code department bankAccountDetails')
+      .exec();
+  
     return {
       runId: run.runId,
       reviewerRole: 'FINANCE_STAFF',
@@ -1058,6 +1064,7 @@ export class PayrollExecutionService {
       employees: details,
     };
   }
+
 
   private async _resolveRunObjectId(
     runIdOrId: string,

@@ -43,12 +43,36 @@ export default function ExceptionsPage() {
   const [selectedException, setSelectedException] = useState<any>(null)
   const [showModal, setShowModal] = useState(false)
 
+  // Helper functions to infer exception details from text
+  const inferExceptionType = (exceptionText: string): string => {
+    const text = exceptionText?.toLowerCase() || ''
+    if (text.includes('bank')) return 'MISSING_BANK_DETAILS'
+    if (text.includes('negative')) return 'NEGATIVE_NET_PAY'
+    if (text.includes('penalties') || text.includes('penalty')) return 'EXCESSIVE_PENALTIES'
+    if (text.includes('zero') && text.includes('salary')) return 'ZERO_BASE_SALARY'
+    return 'CALCULATION_ERROR'
+  }
+
+  const inferExceptionStatus = (exceptionText: string): ExceptionStatus => {
+    const text = exceptionText?.toLowerCase() || ''
+    if (text.includes('resolved')) return 'resolved'
+    if (text.includes('in progress') || text.includes('investigating')) return 'in-progress'
+    return 'open'
+  }
+
+  const extractResolutionNote = (exceptionText: string): string | undefined => {
+    if (!exceptionText) return undefined
+    const match = exceptionText.match(/RESOLVED:\s*(.+)$/i)
+    return match ? match[1].trim() : undefined
+  }
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true)
         setError(null)
 
+        // Fetch all payroll runs
         const runsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs`)
         let runsData: any[] = []
         if (runsResponse.ok) {
@@ -59,6 +83,7 @@ export default function ExceptionsPage() {
         }
         setRuns(runsData)
 
+        // Fetch exceptions for all runs
         const allExceptions: any[] = []
         if (runsData.length > 0) {
           for (const run of runsData) {
@@ -66,10 +91,27 @@ export default function ExceptionsPage() {
               const exceptionsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${run._id}/exceptions`)
               if (exceptionsResponse.ok) {
                 const data = await exceptionsResponse.json()
-                if (Array.isArray(data)) {
-                  allExceptions.push(...data)
-                } else if (data && typeof data === "object") {
-                  allExceptions.push(data)
+                
+                // Backend returns { runId, count, exceptions: [...] }
+                if (data.exceptions && Array.isArray(data.exceptions)) {
+                  const formattedExceptions = data.exceptions.map((exc: any) => {
+                    const employee = exc.employee || {}
+                    const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown'
+                    
+                    return {
+                      _id: employee._id || `${run._id}-${Math.random()}`,
+                      employeeId: employee._id || '',
+                      employeeName: employeeName,
+                      payrollRunId: run._id,
+                      runId: run.runId || run._id,
+                      type: inferExceptionType(exc.exception),
+                      exception: exc.exception || '',
+                      status: inferExceptionStatus(exc.exception),
+                      resolutionNote: extractResolutionNote(exc.exception),
+                    }
+                  })
+                  
+                  allExceptions.push(...formattedExceptions)
                 }
               }
             } catch (err) {
@@ -81,6 +123,7 @@ export default function ExceptionsPage() {
         setLoading(false)
       } catch (err: any) {
         console.log("[v0] API not available:", err.message)
+        setError(err.message || "Failed to load data")
         setLoading(false)
       }
     }
@@ -130,12 +173,42 @@ export default function ExceptionsPage() {
         description: "Exception resolved successfully",
       })
 
-      const exceptionsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions`)
-      if (exceptionsResponse.ok) {
-        const data = await exceptionsResponse.json()
-        if (Array.isArray(data)) {
-          setExceptions(data)
+      // Refresh all exceptions
+      const runsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs`)
+      if (runsResponse.ok) {
+        const runsData = await runsResponse.json()
+        const allExceptions: any[] = []
+        
+        for (const run of runsData) {
+          try {
+            const exceptionsResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${run._id}/exceptions`)
+            if (exceptionsResponse.ok) {
+              const data = await exceptionsResponse.json()
+              if (data.exceptions && Array.isArray(data.exceptions)) {
+                const formattedExceptions = data.exceptions.map((exc: any) => {
+                  const employee = exc.employee || {}
+                  const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown'
+                  
+                  return {
+                    _id: employee._id || `${run._id}-${Math.random()}`,
+                    employeeId: employee._id || '',
+                    employeeName: employeeName,
+                    payrollRunId: run._id,
+                    runId: run.runId || run._id,
+                    type: inferExceptionType(exc.exception),
+                    exception: exc.exception || '',
+                    status: inferExceptionStatus(exc.exception),
+                    resolutionNote: extractResolutionNote(exc.exception),
+                  }
+                })
+                allExceptions.push(...formattedExceptions)
+              }
+            }
+          } catch (err) {
+            console.error("Error refreshing exceptions:", err)
+          }
         }
+        setExceptions(allExceptions)
       }
 
       setShowModal(false)
