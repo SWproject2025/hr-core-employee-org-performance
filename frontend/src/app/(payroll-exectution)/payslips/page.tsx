@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Search, Download, Send, Eye, Printer, Mail, X, FileText, AlertTriangle } from 'lucide-react';
+import { Search, Download, Send, Eye, Printer, Mail, X, FileText, AlertTriangle, Loader2 } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -17,6 +17,7 @@ const FinalizedPayslipsPage = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     fetchPayslips();
@@ -27,14 +28,12 @@ const FinalizedPayslipsPage = () => {
       setLoading(true);
       setError(null);
       
-      // Build query params based on what backend actually supports
       const params = new URLSearchParams();
       if (filters.runId) params.append('runId', filters.runId);
       if (filters.employeeName) params.append('employeeName', filters.employeeName);
       if (filters.department) params.append('department', filters.department);
       
       const url = `${API_URL}/payroll-execution/payslips${params.toString() ? '?' + params.toString() : ''}`;
-      console.log('Fetching from:', url);
       
       const response = await fetch(url);
       
@@ -43,7 +42,6 @@ const FinalizedPayslipsPage = () => {
       }
       
       const data = await response.json();
-      console.log('Fetched payslips:', data);
       setPayslips(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.error('Error fetching payslips:', err);
@@ -72,14 +70,11 @@ const FinalizedPayslipsPage = () => {
       setDetailLoading(true);
       setShowDetailModal(true);
       
-      // Fetch full payslip details using the backend endpoint
       const response = await fetch(`${API_URL}/payroll-execution/payslips/${payslip._id}`);
       if (!response.ok) throw new Error('Failed to fetch payslip details');
       
       const fullPayslip = await response.json();
-      console.log('Full payslip details:', fullPayslip);
       
-      // Map the backend response to frontend format
       setSelectedPayslip({
         ...payslip,
         earningsDetails: fullPayslip.earningsDetails,
@@ -98,16 +93,68 @@ const FinalizedPayslipsPage = () => {
   };
 
   const handleDownload = async (payslipId: string) => {
-    // Note: PDF download endpoint not implemented in backend yet
-    alert('PDF download functionality will be implemented when backend endpoint is ready.\n\nBackend TODO: Add POST /payroll-execution/payslips/:id/download');
+    try {
+      setActionLoading(true);
+      
+      const response = await fetch(`${API_URL}/payroll-execution/payslips/${payslipId}/download`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('PDF generation endpoint not available');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payslip_${payslipId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert('PDF download is not yet implemented.\n\nThis feature requires backend support for PDF generation.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handleBulkDownload = () => {
+  const handleBulkDownload = async () => {
     if (selectedPayslips.length === 0) {
       alert('Please select payslips first');
       return;
     }
-    alert(`Bulk download not yet implemented.\n\nBackend TODO: Add POST /payroll-execution/payslips/bulk-download`);
+    
+    try {
+      setActionLoading(true);
+      
+      const response = await fetch(`${API_URL}/payroll-execution/payslips/bulk-download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payslipIds: selectedPayslips })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Bulk download endpoint not available');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payslips_${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setSelectedPayslips([]);
+    } catch (err: any) {
+      alert('Bulk download is not yet implemented.\n\nThis feature requires backend support for ZIP generation.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleBulkResend = async () => {
@@ -115,7 +162,28 @@ const FinalizedPayslipsPage = () => {
       alert('Please select payslips first');
       return;
     }
-    alert('Bulk resend not yet implemented.\n\nBackend TODO: Add POST /payroll-execution/payslips/bulk-resend');
+    
+    try {
+      setActionLoading(true);
+      
+      const response = await fetch(`${API_URL}/payroll-execution/payslips/bulk-resend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payslipIds: selectedPayslips })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Bulk resend endpoint not available');
+      }
+      
+      const result = await response.json();
+      alert(`Successfully sent ${result.sent} payslips via email`);
+      setSelectedPayslips([]);
+    } catch (err: any) {
+      alert('Email distribution is not yet implemented.\n\nThis feature requires backend email integration (SendGrid/AWS SES).');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handlePrint = () => {
@@ -123,7 +191,23 @@ const FinalizedPayslipsPage = () => {
   };
 
   const handleEmailPayslip = async (payslipId: string) => {
-    alert('Email functionality not yet implemented.\n\nBackend TODO: Add POST /payroll-execution/payslips/:id/send-email');
+    try {
+      setActionLoading(true);
+      
+      const response = await fetch(`${API_URL}/payroll-execution/payslips/${payslipId}/send-email`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Email endpoint not available');
+      }
+      
+      alert('Payslip sent successfully via email');
+    } catch (err: any) {
+      alert('Email functionality is not yet implemented.\n\nBackend needs email integration with SendGrid or AWS SES.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -151,16 +235,18 @@ const FinalizedPayslipsPage = () => {
             <div className="flex gap-2">
               <button
                 onClick={handleBulkDownload}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
+                disabled={actionLoading}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition disabled:opacity-50"
               >
-                <Download size={18} />
+                {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
                 Download Selected ({selectedPayslips.length})
               </button>
               <button
                 onClick={handleBulkResend}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition"
+                disabled={actionLoading}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition disabled:opacity-50"
               >
-                <Send size={18} />
+                {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                 Resend Selected
               </button>
             </div>
@@ -229,7 +315,10 @@ const FinalizedPayslipsPage = () => {
           
           <div className="mt-4 flex gap-2 justify-end">
             <button
-              onClick={() => setFilters({ runId: '', employeeName: '', department: '' })}
+              onClick={() => {
+                setFilters({ runId: '', employeeName: '', department: '' });
+                setTimeout(fetchPayslips, 100);
+              }}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
             >
               Clear Filters
@@ -320,20 +409,23 @@ const FinalizedPayslipsPage = () => {
                               onClick={() => handleViewDetail(payslip)}
                               className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded transition"
                               title="View Details"
+                              disabled={actionLoading}
                             >
                               <Eye size={18} />
                             </button>
                             <button
                               onClick={() => handleDownload(payslip._id)}
                               className="text-green-600 hover:text-green-800 p-1 hover:bg-green-50 rounded transition"
-                              title="Download PDF (Not Implemented)"
+                              title="Download PDF"
+                              disabled={actionLoading}
                             >
                               <Download size={18} />
                             </button>
                             <button
                               onClick={() => handleEmailPayslip(payslip._id)}
                               className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded transition"
-                              title="Send Email (Not Implemented)"
+                              title="Send Email"
+                              disabled={actionLoading}
                             >
                               <Send size={18} />
                             </button>
@@ -353,7 +445,6 @@ const FinalizedPayslipsPage = () => {
       {showDetailModal && selectedPayslip && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
               <h2 className="text-2xl font-bold">Payslip Details</h2>
               <button
@@ -367,7 +458,6 @@ const FinalizedPayslipsPage = () => {
               </button>
             </div>
 
-            {/* Modal Content */}
             {detailLoading ? (
               <div className="p-12 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
@@ -375,14 +465,12 @@ const FinalizedPayslipsPage = () => {
               </div>
             ) : (
               <div className="p-6 space-y-6">
-                {/* Company Header */}
                 <div className="text-center border-b pb-4">
                   <h3 className="text-xl font-bold text-gray-800">Company Name</h3>
                   <p className="text-sm text-gray-500">123 Business St, City, Country</p>
                   <p className="text-sm text-gray-500">Tel: +123 456 7890</p>
                 </div>
 
-                {/* Employee Details */}
                 <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
                   <div>
                     <p className="text-xs text-gray-500 uppercase">Employee Name</p>
@@ -404,7 +492,6 @@ const FinalizedPayslipsPage = () => {
                   </div>
                 </div>
 
-                {/* Earnings Breakdown */}
                 <div>
                   <h4 className="font-semibold text-lg mb-3 text-green-700">Earnings</h4>
                   <div className="space-y-2">
@@ -441,7 +528,6 @@ const FinalizedPayslipsPage = () => {
                   </div>
                 </div>
 
-                {/* Deductions Breakdown */}
                 <div>
                   <h4 className="font-semibold text-lg mb-3 text-red-700">Deductions</h4>
                   <div className="space-y-2">
@@ -472,7 +558,6 @@ const FinalizedPayslipsPage = () => {
                   </div>
                 </div>
 
-                {/* Net Pay */}
                 <div className="bg-blue-50 p-6 rounded-lg border-2 border-blue-200">
                   <div className="flex justify-between items-center">
                     <span className="text-xl font-bold text-gray-800">Net Pay</span>
@@ -482,7 +567,6 @@ const FinalizedPayslipsPage = () => {
                   </div>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={handlePrint}
