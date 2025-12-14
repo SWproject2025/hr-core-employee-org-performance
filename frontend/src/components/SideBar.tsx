@@ -1,13 +1,13 @@
 "use client";
 import React, { useState } from 'react';
-import { LayoutDashboard, Settings, Play, User, TrendingUp, FileText, Search, Bell, HelpCircle, Eye, Edit } from 'lucide-react';
+import { LayoutDashboard, Settings, Play, User, TrendingUp, FileText, Calendar, CheckSquare, ClipboardList } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export const Sidebar = () => {
     const [activeItem, setActiveItem] = React.useState('dashboard');
     const router = useRouter() 
     const menuItems = [
-      { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+      { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/' },
       { 
         id: 'payroll-config', 
         icon: Settings, 
@@ -35,6 +35,17 @@ export const Sidebar = () => {
         ]
       },
       {
+        id: 'leave-management',
+        icon: Calendar,
+        label: 'Leave Management',
+        submenu: [
+          { id: 'my-leaves', label: 'My Leave Requests', path: '/leaves/my-requests' },
+          { id: 'leave-approvals', label: 'Leave Approvals', path: '/leaves/approvals' },
+          { id: 'leave-balance', label: 'Leave Balance', path: '/leaves/balance' },
+          { id: 'leave-config', label: 'Leave Configuration', path: '/leaves/admin/config' }
+        ]
+      },
+      {
         id: 'employee-portal',
         icon: User,
         label: 'Employee Portal',
@@ -57,12 +68,12 @@ export const Sidebar = () => {
     }  
 
   return (
-    <div className="w-60 bg-slate-900 text-white h-screen flex flex-col">
+    <div className="w-60 bg-slate-900 text-white h-screen flex flex-col overflow-y-auto">
       <div className="p-4 border-b border-slate-700">
-        <span className="font-semibold text-sm">Payroll System</span>
+        <span className="font-semibold text-sm">HR System</span>
       </div>
       
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav className="flex-1 py-2">
         {menuItems.map(item => {
           const Icon = item.icon;
           return (
