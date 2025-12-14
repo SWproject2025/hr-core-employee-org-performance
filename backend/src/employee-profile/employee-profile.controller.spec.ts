@@ -1,6 +1,11 @@
 import { Test } from '@nestjs/testing';
 import { EmployeeProfileController } from './employee-profile.controller';
 import { EmployeeProfileService } from './employee-profile.service';
+import { 
+  Controller, Put, Param, Post, UseInterceptors, UploadedFile, 
+  ParseFilePipe, MaxFileSizeValidator, FileTypeValidator, Req 
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 describe('EmployeeProfileController', () => {
   let controller: EmployeeProfileController;
@@ -44,19 +49,21 @@ describe('EmployeeProfileController', () => {
     });
   });
 
-  describe('updateContactInfo', () => {
-    it('should call service.updateContactInfo', async () => {
-      const dto = { phoneNumber: '123456' };
-      const req = { user: { userId: '123' } };
-      await controller.updateContactInfo('123', dto, req);
-      expect(service.updateContactInfo).toHaveBeenCalledWith('123', dto, '123');
-    });
+ describe('updateContactInfo', () => {
+  it('should call service.updateContactInfo', async () => {
+    // FIX: Change 'phoneNumber' to 'mobilePhone'
+    const dto = { mobilePhone: '123456' }; 
+    const req = { user: { userId: '123' } };
+    
+    await controller.updateContactInfo('123', dto, req);
+    expect(service.updateContactInfo).toHaveBeenCalledWith('123', dto);
   });
+});
 
   describe('approveRequest', () => {
     it('should call service.approveChangeRequest', async () => {
-      await controller.approveRequest('reqId', 'adminId');
-      expect(service.approveChangeRequest).toHaveBeenCalledWith('reqId', 'adminId');
+      await controller.approveRequest('reqId');
+      expect(service.approveChangeRequest).toHaveBeenCalledWith('reqId');
     });
   });
 
@@ -77,7 +84,8 @@ describe('EmployeeProfileController', () => {
 
       await controller.adminUpdate(id, dto, req);
 
-      expect(service.adminUpdateProfile).toHaveBeenCalledWith(id, dto, 'admin-user');
+      expect(service.adminUpdateProfile).toHaveBeenCalledWith(id, dto);
     });
   });
+  
 });

@@ -2,7 +2,9 @@ import { Controller, Get, Put, Post, Param, Body, Req } from '@nestjs/common';
 import { EmployeeProfileService } from './employee-profile.service';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { CreateChangeRequestDto } from './dto/change-request.dto';
-
+import { UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Query } from '@nestjs/common';
 @Controller('employee-profile')
 export class EmployeeProfileController {
   constructor(private readonly employeeProfileService: EmployeeProfileService) {}
@@ -57,7 +59,7 @@ export class EmployeeProfileController {
   ) {
     return this.employeeProfileService.approveChangeRequest(requestId);
   }
-
+  
   @Put('admin/:id')
   async adminUpdate(
     @Param('id') id: string,
@@ -66,4 +68,26 @@ export class EmployeeProfileController {
   ) {
     return this.employeeProfileService.adminUpdateProfile(id, dto);
   }
+  @Post(':id/upload-photo')
+  @UseInterceptors(FileInterceptor('file')) // 'file' matches the form-data key
+  async uploadProfilePicture(
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 5 }), // Limit: 5MB
+          new FileTypeValidator({ fileType: '.(png|jpeg|jpg)' }), // Limit: Images only
+        ],
+      }),
+    ) file: Express.Multer.File,
+  ) {
+    // In a real app, you would generate a full URL (e.g., http://localhost:3000/uploads/...)
+    // For now, we store the filename/path
+    return this.employeeProfileService.updateProfilePicture(id, file.path);
+  }
+  @Get('search')
+  async searchEmployees(@Query('q') query: string) {
+    return this.employeeProfileService.searchEmployees(query);
+  }
+  
 }

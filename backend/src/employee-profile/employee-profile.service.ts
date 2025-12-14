@@ -47,6 +47,16 @@ export class EmployeeProfileService {
 
   // --- 3. Submit Change Request ---
   async submitChangeRequest(employeeId: string, changes: any, reason?: string): Promise<EmployeeProfileChangeRequest> {
+    
+    // SECURITY: Prevent users from requesting changes to restricted fields
+    const restrictedFields = ['_id', 'employeeNumber', 'status', 'payGradeId', 'supervisorPositionId', 'roles'];
+    const requestKeys = Object.keys(changes);
+    
+    const hasRestricted = requestKeys.some(key => restrictedFields.includes(key));
+    if (hasRestricted) {
+      throw new BadRequestException(`Cannot request changes to restricted fields: ${restrictedFields.join(', ')}`);
+    }
+
     const newRequest = new this.changeRequestModel({
       requestId: new Types.ObjectId().toString(),
       employeeProfileId: new Types.ObjectId(employeeId),
@@ -59,16 +69,19 @@ export class EmployeeProfileService {
   }
 
   // --- 4. Manager View Team ---
-  async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
-    const managerProfile = await this.employeeProfileModel.findById(managerEmployeeId).exec();
-    if (!managerProfile || !managerProfile.primaryPositionId) {
-        throw new NotFoundException('Manager profile or position not found');
-    }
-    // Find employees reporting to this position
-    return this.employeeProfileModel.find({ 
-        supervisorPositionId: managerProfile.primaryPositionId 
-    }).exec();
+async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
+  const managerProfile = await this.employeeProfileModel.findById(managerEmployeeId).exec();
+  if (!managerProfile?.primaryPositionId) {
+      throw new NotFoundException('Manager profile or position not found');
   }
+  
+  // FIXED: Select only non-sensitive fields per 
+  return this.employeeProfileModel.find({ 
+      supervisorPositionId: managerProfile.primaryPositionId 
+  })
+  .select('firstName lastName positionId departmentId dateOfHire status profilePictureUrl workEmail')
+  .exec();
+}
 
   // --- 5. Approve Change Request ---
   async approveChangeRequest(requestId: string): Promise<EmployeeProfile> {
@@ -148,4 +161,36 @@ export class EmployeeProfileService {
     await user.save();
     return true;
   }
+  async updateProfilePicture(employeeId: string, filePath: string): Promise<EmployeeProfile> {
+    const updated = await this.employeeProfileModel
+      .findByIdAndUpdate(
+        employeeId, 
+        // We set the new URL (file path)
+        { $set: { profilePictureUrl: filePath } }, 
+        { new: true }
+      )
+      .exec();
+
+    if (!updated) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
+    return updated;
+  }
+  async searchEmployees(query: string): Promise<EmployeeProfile[]> {
+    if (!query) return [];
+    
+    // Search by First Name, Last Name, or Employee Number (Case-insensitive)
+    const regex = new RegExp(query, 'i');
+    
+    return this.employeeProfileModel.find({
+      $or: [
+        { firstName: regex },
+        { lastName: regex },
+        { employeeNumber: regex },
+        { nationalId: regex } // HR Admin typically needs to search by National ID too
+      ]
+    })
+    .select('firstName lastName employeeNumber primaryDepartmentId primaryPositionId status') // Optimize results
+    .limit(20)
+    .exec();
+  }
+  
 }
