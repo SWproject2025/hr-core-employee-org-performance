@@ -6,9 +6,18 @@ export enum AppraisalTemplateType {
   AD_HOC = 'AD_HOC',
 }
 
+/**
+ * Appraisal Cycle Lifecycle
+ * PLANNED   -> HR setup
+ * ACTIVE    -> Managers evaluate
+ * PUBLISHED -> Employees can view & dispute
+ * CLOSED    -> Disputes resolved, no more actions
+ * ARCHIVED  -> Historical read-only data
+ */
 export enum AppraisalCycleStatus {
   PLANNED = 'PLANNED',
   ACTIVE = 'ACTIVE',
+  PUBLISHED = 'PUBLISHED',   // ✅ ADDED (CRITICAL)
   CLOSED = 'CLOSED',
   ARCHIVED = 'ARCHIVED',
 }
@@ -20,7 +29,7 @@ export enum AppraisalAssignmentStatus {
   PUBLISHED = 'PUBLISHED',
   ACKNOWLEDGED = 'ACKNOWLEDGED',
 
-  // Added for dispute + final closure handling
+  // Dispute & finalization
   UNDER_DISPUTE = 'UNDER_DISPUTE',
   FINALIZED = 'FINALIZED',
 }

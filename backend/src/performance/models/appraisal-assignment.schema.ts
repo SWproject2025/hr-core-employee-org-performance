@@ -48,6 +48,15 @@ export class AppraisalAssignment {
   @Prop({ type: Date })
   publishedAt?: Date;
 
+  @Prop({ type: Date })
+  employeeAcknowledgedAt?: Date;
+
+  @Prop({ type: Types.ObjectId, ref: 'AppraisalDispute' })
+  disputeId?: Types.ObjectId;
+
+  @Prop({ type: Date })
+  finalizedAt?: Date;
+
   @Prop({ type: Types.ObjectId, ref: 'AppraisalRecord' })
   latestAppraisalId?: Types.ObjectId;
 }

@@ -12,7 +12,6 @@ import { CreateAppraisalTemplateDto } from './dto/create-appraisal-template.dto'
 import { UpdateAppraisalTemplateDto } from './dto/update-appraisal-template.dto';
 import { CreateAppraisalCycleDto } from './dto/create-appraisal-cycle.dto';
 import { SubmitAppraisalDto } from './dto/submit-appraisal.dto';
-// ⚠️ Removed SubmitDisputeDto import
 import { ResolveDisputeDto } from './dto/ResolveDisputeDto';
 
 @Controller('performance')
@@ -65,6 +64,27 @@ export class PerformanceController {
     return this.performanceService.getCycleById(id);
   }
 
+  // ✅ Cycle lifecycle (HR)
+  @Post('cycles/:id/activate')
+  activateCycle(@Param('id') id: string) {
+    return this.performanceService.activateCycle(id);
+  }
+
+  @Post('cycles/:id/publish')
+  publishCycle(@Param('id') id: string) {
+    return this.performanceService.publishCycle(id);
+  }
+
+  @Post('cycles/:id/close')
+  closeCycle(@Param('id') id: string) {
+    return this.performanceService.closeCycle(id);
+  }
+
+  @Post('cycles/:id/archive')
+  archiveCycle(@Param('id') id: string) {
+    return this.performanceService.archiveCycle(id);
+  }
+
   // ================
   // MANAGER – ASSIGNMENTS & SUBMISSION
   // ================
@@ -101,7 +121,7 @@ export class PerformanceController {
   }
 
   // ================
-  // HR – PUBLISH APPRAISAL
+  // HR – PUBLISH APPRAISAL (single assignment)
   // ================
 
   @Post('hr/assignments/:assignmentId/publish')
