@@ -1,68 +1,74 @@
-"use client"
-import React, { useState } from 'react';
+'use client';
+
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '../../../lib/auth';
+import { AuthService } from '@/services/auth.service';
+import { Button } from '@/components/employee-profile-ui/button';
+import { Input } from '@/components/employee-profile-ui/input';
+import { Card, CardContent, CardHeader } from '@/components/employee-profile-ui/card';
+import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ email: '', password: '' });
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); // Prevents 404 error
     setLoading(true);
-    setError(null);
+
     try {
-      await login(email, password);
-      // Redirect to employee dashboard
-      router.push('/employee/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
+      await AuthService.login(form);
+      toast.success('Welcome back!');
+      router.push('/profile/me'); // Redirect to profile after login
+    } catch (error: any) {
+      toast.error('Invalid credentials');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black p-6">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow text-gray-900">
-        <h2 className="text-2xl font-bold mb-4 text-gray-900">Employee Login</h2>
-        {error && <div className="mb-4 text-red-600">{error}</div>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full border px-3 py-2 rounded text-gray-900 placeholder-gray-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full border px-3 py-2 rounded text-gray-900 placeholder-gray-500"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-              disabled={loading}
-            >
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900">Employee Login</h1>
+          <p className="text-sm text-gray-500">Access your HR portal</p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Input 
+                type="email" 
+                placeholder="Email Address" 
+                value={form.email}
+                onChange={(e) => setForm({...form, email: e.target.value})}
+                required 
+              />
+            </div>
+            <div>
+              <Input 
+                type="password" 
+                placeholder="Password" 
+                value={form.password}
+                onChange={(e) => setForm({...form, password: e.target.value})}
+                required 
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Logging in...' : 'Login'}
-            </button>
-            <a href="/employee/register" className="text-sm text-blue-600">Create account</a>
+            </Button>
+          </form>
+
+          <div className="mt-4 text-center text-sm">
+            Don't have an account?{' '}
+            <Link href="/employee/register" className="text-blue-600 hover:underline">
+              Register here
+            </Link>
           </div>
-        </form>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react';
 import { EmployeeService } from '@/services/employee.service';
 import { EmployeeProfile } from '@/types/employee';
 import { Card, CardContent } from '@/components/employee-profile-ui/card';
-import { Button } from '@/components/employee-profile-ui/button';
-import { Loader2, Mail, Phone, User } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Loader2, Mail, Briefcase } from 'lucide-react';
 
 export default function TeamPage() {
   const [team, setTeam] = useState<EmployeeProfile[]>([]);
@@ -15,93 +13,49 @@ export default function TeamPage() {
   useEffect(() => {
     const fetchTeam = async () => {
       try {
-        // 1. Get current user's ID
         const { profile } = await EmployeeService.getMe();
-        
         if (profile._id) {
-          // 2. Fetch team using that ID
           const teamData = await EmployeeService.getTeam(profile._id);
           setTeam(teamData);
         }
       } catch (error) {
-        console.error(error);
-        toast.error("Failed to load team members");
+        console.error("Failed to load team", error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchTeam();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-blue-600"/></div>;
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Team</h1>
-          <p className="text-gray-500">Manage your direct reports</p>
-        </div>
-        <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium text-sm">
-          Total Members: {team.length}
-        </div>
-      </div>
-      
+      <h1 className="text-2xl font-bold mb-6">My Team ({team.length})</h1>
       {team.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-dashed border-gray-300">
-          <User className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-          <h3 className="text-lg font-medium text-gray-900">No Direct Reports</h3>
-          <p className="text-gray-500">You do not have any team members assigned yet.</p>
-        </div>
+        <p className="text-gray-500">No team members found.</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {team.map((member) => (
-            <Card key={member._id} className="hover:shadow-md transition-shadow duration-200">
-              <CardContent className="pt-6">
-                <div className="flex flex-col items-center text-center">
-                  {/* Avatar */}
-                  <div className="w-20 h-20 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center overflow-hidden mb-4">
-                    {member.profilePictureUrl ? (
-                      <img src={`http://localhost:3000/${member.profilePictureUrl}`} alt={member.firstName} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-2xl font-bold text-gray-400">
-                        {member.firstName[0]}{member.lastName[0]}
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 className="font-semibold text-lg text-gray-900">
-                    {member.firstName} {member.lastName}
-                  </h3>
-                  <p className="text-sm text-gray-500 mb-4">{member.workEmail}</p>
-
-                  <div className="w-full space-y-2 border-t pt-4">
-                    <div className="flex items-center justify-center text-sm text-gray-600 gap-2">
-                      <Mail size={14} />
-                      <span className="truncate">{member.workEmail}</span>
-                    </div>
-                    <div className="flex items-center justify-center text-sm text-gray-600 gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        member.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {member.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Button className="w-full mt-6" variant="outline">
-                    View Profile
-                  </Button>
+          {team.map((emp) => (
+            <div key={emp._id} className="bg-white rounded-xl border p-6 hover:shadow-md transition">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
+                  {emp.firstName[0]}{emp.lastName[0]}
                 </div>
-              </CardContent>
-            </Card>
+                <div>
+                  <h3 className="font-bold text-gray-900">{emp.firstName} {emp.lastName}</h3>
+                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">{emp.status}</span>
+                </div>
+              </div>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex items-center gap-2">
+                  <Mail size={14} /> {emp.workEmail}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Briefcase size={14} /> Pos ID: {emp.primaryPositionId}
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       )}

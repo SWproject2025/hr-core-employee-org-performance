@@ -6,16 +6,21 @@ import { AppService } from './app.service';
 import { TimeManagementModule } from './time-management/time-management.module';
 import { RecruitmentModule } from './recruitment/recruitment.module';
 import { LeavesModule } from './leaves/leaves.module';
-
+import { AuthModule } from './auth/auth.module';
 import { PayrollTrackingModule } from './payroll-tracking/payroll-tracking.module';
 import { EmployeeProfileModule } from './employee-profile/employee-profile.module';
 import { OrganizationStructureModule } from './organization-structure/organization-structure.module';
 import { PerformanceModule } from './performance/performance.module';
 import { PayrollConfigurationModule } from './payroll-configuration/payroll-configuration.module';
 import { PayrollExecutionModule } from './payroll-execution/payroll-execution.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    // Initialize ConfigModule globally so you don't have to import it everywhere
+    ConfigModule.forRoot({
+      isGlobal: true, 
+    }),
     // ✅ REPLACE MongooseModule.forRoot with forRootAsync
     MongooseModule.forRootAsync({
       useFactory: () => {
@@ -34,6 +39,7 @@ import { PayrollExecutionModule } from './payroll-execution/payroll-execution.mo
     EmployeeProfileModule,
     OrganizationStructureModule,
     PerformanceModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
