@@ -1,32 +1,43 @@
-import { Controller, Get, Put, Post, Param, Body, Req } from '@nestjs/common';
+import { 
+  Controller, Get, Put, Post, Param, Body, Req, Query, 
+  UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator 
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { EmployeeProfileService } from './employee-profile.service';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { CreateChangeRequestDto } from './dto/change-request.dto';
-import { UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { Query } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { UseGuards } from '@nestjs/common';
+
 @Controller('employee-profile')
 export class EmployeeProfileController {
   constructor(private readonly employeeProfileService: EmployeeProfileService) {}
 
-  @Get(':id')
-  async getProfile(@Param('id') id: string) {
-    return this.employeeProfileService.getProfile(id);
-  }
+  // ==================================================================
+  // ✅ 1. SPECIFIC ROUTES (Must come BEFORE :id)
+  // ==================================================================
 
   @Get('me')
+  @UseGuards(AuthGuard('jwt'))
   async getMyProfile(@Req() req: any) {
-    const userId = req?.user?.userId;
+    // 👇 ADD THESE LOGS
+    console.log('--- DEBUG: /me route hit ---');
+    console.log('User from Token:', req.user);
+    
+    const userId = req.user?.userId || req.user?.sub;
+    console.log('Extracted UserID:', userId);
+
     return this.employeeProfileService.getProfileWithRole(userId);
   }
 
-  @Put(':id/contact')
-  async updateContactInfo(
-    @Param('id') id: string,
-    @Body() dto: UpdateContactDto,
-    @Req() req: any,
-  ) {
-    return this.employeeProfileService.updateContactInfo(id, dto);
+  @Get('search') // <--- Moved UP here so it doesn't get caught by :id
+  async searchEmployees(@Query('q') query: string) {
+    return this.employeeProfileService.searchEmployees(query);
+  }
+
+  @Get('team/:managerId')
+  async getTeam(@Param('managerId') managerId: string) {
+    return this.employeeProfileService.getTeamProfiles(managerId);
   }
 
   @Put('me/password')
@@ -34,6 +45,36 @@ export class EmployeeProfileController {
     const userId = req?.user?.userId;
     const { oldPassword, newPassword } = body;
     return this.employeeProfileService.changePassword(userId, oldPassword, newPassword);
+  }
+
+  @Post('change-request/:requestId/approve')
+  async approveRequest(@Param('requestId') requestId: string) {
+    return this.employeeProfileService.approveChangeRequest(requestId);
+  }
+  
+  @Put('admin/:id')
+  async adminUpdate(
+    @Param('id') id: string,
+    @Body() dto: any,
+  ) {
+    return this.employeeProfileService.adminUpdateProfile(id, dto);
+  }
+
+  // ==================================================================
+  // ✅ 2. WILDCARD ROUTES (Must come LAST)
+  // ==================================================================
+
+  @Get(':id')
+  async getProfile(@Param('id') id: string) {
+    return this.employeeProfileService.getProfile(id);
+  }
+
+  @Put(':id/contact')
+  async updateContactInfo(
+    @Param('id') id: string,
+    @Body() dto: UpdateContactDto,
+  ) {
+    return this.employeeProfileService.updateContactInfo(id, dto);
   }
 
   @Post(':id/change-request')
@@ -48,26 +89,6 @@ export class EmployeeProfileController {
     );
   }
 
-  @Get('team/:managerId')
-  async getTeam(@Param('managerId') managerId: string) {
-    return this.employeeProfileService.getTeamProfiles(managerId);
-  }
-
-  @Post('change-request/:requestId/approve')
-  async approveRequest(
-    @Param('requestId') requestId: string,
-  ) {
-    return this.employeeProfileService.approveChangeRequest(requestId);
-  }
-  
-  @Put('admin/:id')
-  async adminUpdate(
-    @Param('id') id: string,
-    @Body() dto: any,
-    @Req() req: any,
-  ) {
-    return this.employeeProfileService.adminUpdateProfile(id, dto);
-  }
   @Post(':id/upload-photo')
   @UseInterceptors(FileInterceptor('file')) // 'file' matches the form-data key
   async uploadProfilePicture(
@@ -85,9 +106,4 @@ export class EmployeeProfileController {
     // For now, we store the filename/path
     return this.employeeProfileService.updateProfilePicture(id, file.path);
   }
-  @Get('search')
-  async searchEmployees(@Query('q') query: string) {
-    return this.employeeProfileService.searchEmployees(query);
-  }
-  
 }

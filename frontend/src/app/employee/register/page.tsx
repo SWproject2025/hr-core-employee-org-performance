@@ -1,82 +1,132 @@
-"use client"
-import React, { useState } from 'react';
+'use client';
+
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { register } from '../../../lib/auth';
+import { AuthService } from '@/services/auth.service';
+import { Button } from '@/components/employee-profile-ui/button';
+import { Input } from '@/components/employee-profile-ui/input';
+import { Card, CardContent, CardHeader } from '@/components/employee-profile-ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/employee-profile-ui/select';
+import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 export default function RegisterPage() {
-  const [form, setForm] = useState<any>({
-    firstName: '',
-    lastName: '',
-    nationalId: '',
-    employeeNumber: '',
-    dateOfHire: '',
-    personalEmail: '',
-    password: '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  
+  const [form, setForm] = useState({
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    nationalId: '',     
+    // candidateNumber: '',  <-- REMOVED (Backend will handle this)
+    personalEmail: '', 
+    password: '',
+    mobilePhone: '',
+    gender: '',       
+    maritalStatus: '',
+  });
 
-  const handleChange = (k: string, v: any) => setForm({ ...form, [k]: v });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSelectChange = (name: string, value: string) => {
+    setForm({ ...form, [name]: value });
+  };
+
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-    try {
-      // Prepare payload that EmployeeProfile expects minimally
-      const payload = {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        nationalId: form.nationalId,
-        employeeNumber: form.employeeNumber,
-        dateOfHire: form.dateOfHire || new Date().toISOString(),
-        personalEmail: form.personalEmail,
-        password: form.password,
-      };
 
-      await register(payload);
-      // After register, go to login page
+    // FIX: Remove empty optional fields so Mongoose doesn't complain about Enums
+    const payload: any = {
+      firstName: form.firstName,
+      lastName: form.lastName,
+      nationalId: form.nationalId,
+      personalEmail: form.personalEmail,
+      email: form.personalEmail, // Send both to be safe
+      password: form.password,
+    };
+
+    // Only add optional fields if they have values
+    if (form.middleName) payload.middleName = form.middleName;
+    if (form.mobilePhone) payload.mobilePhone = form.mobilePhone;
+    if (form.gender) payload.gender = form.gender;
+    if (form.maritalStatus) payload.maritalStatus = form.maritalStatus;
+
+    try {
+      await AuthService.register(payload);
+      toast.success('Application submitted successfully!');
       router.push('/employee/login');
-    } catch (err: any) {
-      setError(err.message || 'Registration failed');
+    } catch (error: any) {
+      console.error(error);
+      const message = error.response?.data?.message || 'Registration failed';
+      toast.error(Array.isArray(message) ? message[0] : message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black p-6">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow text-gray-900">
-        <h2 className="text-2xl font-bold mb-4 text-gray-900">Create Employee Account</h2>
-        {error && <div className="mb-4 text-red-600">{error}</div>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            <input placeholder="First name" required value={form.firstName} onChange={(e) => handleChange('firstName', e.target.value)} className="p-2 border rounded text-gray-900 placeholder-gray-500" />
-            <input placeholder="Last name" required value={form.lastName} onChange={(e) => handleChange('lastName', e.target.value)} className="p-2 border rounded text-gray-900 placeholder-gray-500" />
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <Card className="w-full max-w-2xl shadow-lg">
+        <CardHeader className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900">Candidate Registration</h1>
+          <p className="text-sm text-gray-500">Join our talent pool</p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input name="firstName" placeholder="First Name *" onChange={handleChange} required />
+              <Input name="middleName" placeholder="Middle Name" onChange={handleChange} />
+              <Input name="lastName" placeholder="Last Name *" onChange={handleChange} required />
+            </div>
+
+            {/* National ID is the only unique ID the user provides */}
+            <Input name="nationalId" placeholder="National ID *" onChange={handleChange} required />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select onValueChange={(val) => handleSelectChange('gender', val)}>
+                <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MALE">Male</SelectItem>
+                  <SelectItem value="FEMALE">Female</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select onValueChange={(val) => handleSelectChange('maritalStatus', val)}>
+                <SelectTrigger><SelectValue placeholder="Marital Status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SINGLE">Single</SelectItem>
+                  <SelectItem value="MARRIED">Married</SelectItem>
+                  <SelectItem value="DIVORCED">Divorced</SelectItem>
+                  <SelectItem value="WIDOWED">Widowed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input name="personalEmail" type="email" placeholder="Personal Email *" onChange={handleChange} required />
+              <Input name="mobilePhone" placeholder="Mobile Phone" onChange={handleChange} />
+            </div>
+
+            <Input name="password" type="password" placeholder="Password *" onChange={handleChange} required />
+            
+            <Button type="submit" className="w-full mt-6" disabled={loading}>
+              {loading ? 'Submitting...' : 'Submit Application'}
+            </Button>
+          </form>
+          
+          <div className="mt-4 text-center text-sm">
+            Already have an account?{' '}
+            <Link href="/employee/login" className="text-blue-600 hover:underline">
+              Login here
+            </Link>
           </div>
-          <div>
-            <input placeholder="National ID" required value={form.nationalId} onChange={(e) => handleChange('nationalId', e.target.value)} className="p-2 border rounded w-full text-gray-900 placeholder-gray-500" />
-          </div>
-          <div>
-            <input placeholder="Employee number" required value={form.employeeNumber} onChange={(e) => handleChange('employeeNumber', e.target.value)} className="p-2 border rounded w-full text-gray-900 placeholder-gray-500" />
-          </div>
-          <div>
-            <label className="text-xs">Date of hire</label>
-            <input type="date" value={form.dateOfHire} onChange={(e) => handleChange('dateOfHire', e.target.value)} className="p-2 border rounded w-full text-gray-900" />
-          </div>
-          <div>
-            <input placeholder="Email" type="email" required value={form.personalEmail} onChange={(e) => handleChange('personalEmail', e.target.value)} className="p-2 border rounded w-full text-gray-900 placeholder-gray-500" />
-          </div>
-          <div>
-            <input placeholder="Password" type="password" required value={form.password} onChange={(e) => handleChange('password', e.target.value)} className="p-2 border rounded w-full text-gray-900 placeholder-gray-500" />
-          </div>
-          <div className="flex items-center justify-between">
-            <button type="submit" disabled={loading} className="px-4 py-2 bg-green-600 text-white rounded">{loading ? 'Creating...' : 'Create account'}</button>
-            <a href="/employee/login" className="text-blue-600">Already have an account? Login</a>
-          </div>
-        </form>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

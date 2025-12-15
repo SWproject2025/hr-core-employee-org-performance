@@ -20,34 +20,37 @@ export class EmployeeProfileService {
     @InjectModel(EmployeeQualification.name) private qualificationModel: Model<EmployeeQualification>,
   ) {}
 
-  // --- 1. View Personal Profile ---
+  // --- 1. View Personal Profile (Strict Employee) ---
   async getProfile(employeeId: string): Promise<EmployeeProfile> {
     const profile = await this.employeeProfileModel.findById(employeeId).exec();
     if (!profile) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
     return profile;
   }
 
-  // --- 2. Update Self-Service Data ---
-  async updateContactInfo(
-    employeeId: string, 
-    updateDto: UpdateContactDto
-  ): Promise<EmployeeProfile> {
+  // --- 2. Update Self-Service Data (Hybrid: Employee OR Candidate) ---
+  async updateContactInfo(userId: string, updateDto: UpdateContactDto): Promise<any> {
     if (Object.keys(updateDto).length === 0) {
       throw new BadRequestException('No valid contact information provided for update.');
     }
 
-    const updated = await this.employeeProfileModel
-      .findByIdAndUpdate(employeeId, { $set: updateDto }, { new: true })
+    // FIX: Typed as 'any' to allow both Employee and Candidate documents
+    let updated: any = await this.employeeProfileModel
+      .findByIdAndUpdate(userId, { $set: updateDto }, { new: true })
       .exec();
       
-    if (!updated) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
+    // If not found in Employee, try Candidate
+    if (!updated) {
+       updated = await this.candidateModel
+        .findByIdAndUpdate(userId, { $set: updateDto }, { new: true })
+        .exec();
+    }
 
+    if (!updated) throw new NotFoundException(`Profile with ID ${userId} not found`);
     return updated;
   }
 
-  // --- 3. Submit Change Request ---
+  // --- 3. Submit Change Request (Employees Only) ---
   async submitChangeRequest(employeeId: string, changes: any, reason?: string): Promise<EmployeeProfileChangeRequest> {
-    
     // SECURITY: Prevent users from requesting changes to restricted fields
     const restrictedFields = ['_id', 'employeeNumber', 'status', 'payGradeId', 'supervisorPositionId', 'roles'];
     const requestKeys = Object.keys(changes);
@@ -69,19 +72,18 @@ export class EmployeeProfileService {
   }
 
   // --- 4. Manager View Team ---
-async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
-  const managerProfile = await this.employeeProfileModel.findById(managerEmployeeId).exec();
-  if (!managerProfile?.primaryPositionId) {
-      throw new NotFoundException('Manager profile or position not found');
+  async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
+    const managerProfile = await this.employeeProfileModel.findById(managerEmployeeId).exec();
+    if (!managerProfile?.primaryPositionId) {
+        throw new NotFoundException('Manager profile or position not found');
+    }
+    
+    return this.employeeProfileModel.find({ 
+        supervisorPositionId: managerProfile.primaryPositionId 
+    })
+    .select('firstName lastName positionId departmentId dateOfHire status profilePictureUrl workEmail')
+    .exec();
   }
-  
-  // FIXED: Select only non-sensitive fields per 
-  return this.employeeProfileModel.find({ 
-      supervisorPositionId: managerProfile.primaryPositionId 
-  })
-  .select('firstName lastName positionId departmentId dateOfHire status profilePictureUrl workEmail')
-  .exec();
-}
 
   // --- 5. Approve Change Request ---
   async approveChangeRequest(requestId: string): Promise<EmployeeProfile> {
@@ -118,35 +120,54 @@ async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
   }
 
   // --- 7. Master Data Management (HR Admin Full Update) ---
-  async adminUpdateProfile(
-    employeeId: string, 
-    updateData: any
-  ): Promise<EmployeeProfile> {
+  async adminUpdateProfile(employeeId: string, updateData: any): Promise<EmployeeProfile> {
     const updated = await this.employeeProfileModel
       .findByIdAndUpdate(employeeId, { $set: updateData }, { new: true })
       .exec();
 
     if (!updated) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
-
     return updated;
   }
 
-  // --- 8. Get profile with role (for 'me' endpoint) ---
-  async getProfileWithRole(employeeId: string): Promise<any> {
-    const profile = await this.employeeProfileModel.findById(employeeId).lean().exec();
-    if (!profile) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
+  // --- 8. Get Profile With Role (Hybrid with Debug Logs) ---
+  async getProfileWithRole(userId: string) {
+    console.log(`--- DEBUG: Service searching for ID: ${userId} ---`);
 
-    const roleDoc = await this.systemRoleModel.findOne({ employeeProfileId: employeeId }).lean().exec();
+    // A. Try finding an Employee Profile first
+    let profile = await this.employeeProfileModel.findById(userId).exec();
+    console.log('Found Employee?', !!profile);
+    
+    // B. If not found, try finding a Candidate Profile
+    if (!profile) {
+       // @ts-ignore
+       const candidate = await this.candidateModel.findById(userId).exec();
+       console.log('Found Candidate?', !!candidate);
 
-    return {
-      profile,
-      role: roleDoc || null,
-    };
+       if (candidate) {
+         return {
+           profile: candidate,
+           role: { roles: ['CANDIDATE'], permissions: [] } // Fake role for UI
+         };
+       }
+       console.log('❌ ERROR: No Employee or Candidate found for this ID.');
+       throw new NotFoundException('Profile not found');
+    }
+
+    // C. If Employee found, get their system roles
+    const role = await this.systemRoleModel.findOne({ employeeProfileId: userId }).exec();
+
+    return { profile, role };
   }
 
-  // --- 9. Change password ---
-  async changePassword(employeeId: string, oldPassword: string | undefined, newPassword: string): Promise<boolean> {
-    const user = await this.employeeProfileModel.findById(employeeId).select('+password').exec();
+  // --- 9. Change Password (Hybrid: Employee OR Candidate) ---
+  async changePassword(userId: string, oldPassword: string | undefined, newPassword: string): Promise<boolean> {
+    // FIX: Explicitly type as 'any' to handle either schema
+    let user: any = await this.employeeProfileModel.findById(userId).select('+password').exec();
+
+    if (!user) {
+      user = await this.candidateModel.findById(userId).select('+password').exec();
+    }
+
     if (!user) throw new NotFoundException('User not found');
 
     // If oldPassword provided, verify it
@@ -161,23 +182,37 @@ async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
     await user.save();
     return true;
   }
-  async updateProfilePicture(employeeId: string, filePath: string): Promise<EmployeeProfile> {
-    const updated = await this.employeeProfileModel
+
+  // --- 10. Update Profile Picture (Hybrid: Employee OR Candidate) ---
+  async updateProfilePicture(userId: string, filePath: string): Promise<any> {
+    // FIX: Typed as 'any' to allow swapping between Employee and Candidate result
+    let updated: any = await this.employeeProfileModel
       .findByIdAndUpdate(
-        employeeId, 
-        // We set the new URL (file path)
+        userId, 
         { $set: { profilePictureUrl: filePath } }, 
         { new: true }
       )
       .exec();
 
-    if (!updated) throw new NotFoundException(`Employee profile with ID ${employeeId} not found`);
+    // If not found in Employee, try Candidate
+    if (!updated) {
+      updated = await this.candidateModel
+        .findByIdAndUpdate(
+          userId, 
+          { $set: { profilePictureUrl: filePath } }, 
+          { new: true }
+        )
+        .exec();
+    }
+
+    if (!updated) throw new NotFoundException(`Profile with ID ${userId} not found`);
     return updated;
   }
+
+  // --- 11. Search (Strict Employee) ---
   async searchEmployees(query: string): Promise<EmployeeProfile[]> {
     if (!query) return [];
     
-    // Search by First Name, Last Name, or Employee Number (Case-insensitive)
     const regex = new RegExp(query, 'i');
     
     return this.employeeProfileModel.find({
@@ -185,12 +220,11 @@ async getTeamProfiles(managerEmployeeId: string): Promise<EmployeeProfile[]> {
         { firstName: regex },
         { lastName: regex },
         { employeeNumber: regex },
-        { nationalId: regex } // HR Admin typically needs to search by National ID too
+        { nationalId: regex }
       ]
     })
-    .select('firstName lastName employeeNumber primaryDepartmentId primaryPositionId status') // Optimize results
+    .select('firstName lastName employeeNumber primaryDepartmentId primaryPositionId status')
     .limit(20)
     .exec();
   }
-  
 }
