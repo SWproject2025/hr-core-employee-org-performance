@@ -5,8 +5,8 @@ import { Model, Types } from 'mongoose';
 import { paySlip, PayslipDocument } from '../payroll-execution/models/payslip.schema';
 import { employeePayrollDetails, employeePayrollDetailsDocument } from '../payroll-execution/models/employeePayrollDetails.schema';
 import {
-  payrollRuns,
-  payrollRunsDocument,
+    payrollRuns,
+    payrollRunsDocument,
 } from '../payroll-execution/models/payrollRuns.schema';
 import { EmployeeProfile, EmployeeProfileDocument } from '../employee-profile/models/employee-profile.schema';
 import { PayslipQueryDto } from './dto/payslips/payslip-query.dto';
@@ -48,25 +48,102 @@ export class PayrollTrackingService {
     ) { }
 
     /**
+     * Helper function to build date query with proper validation and end-of-day handling
+     */
+    private buildDateQuery(fromDate?: string, toDate?: string): { $gte?: Date; $lte?: Date } | null {
+        // Validate date range if both dates are provided
+        if (fromDate && toDate) {
+            const from = new Date(fromDate);
+            const to = new Date(toDate);
+            if (from > to) {
+                throw new BadRequestException('fromDate must be less than or equal to toDate');
+            }
+        }
+
+        if (!fromDate && !toDate) {
+            return null;
+        }
+
+        const dateQuery: { $gte?: Date; $lte?: Date } = {};
+
+        if (fromDate) {
+            // Set to start of day (00:00:00.000)
+            const from = new Date(fromDate);
+            from.setHours(0, 0, 0, 0);
+            dateQuery.$gte = from;
+        }
+
+        if (toDate) {
+            // Set to end of day (23:59:59.999) to include the entire day
+            const to = new Date(toDate);
+            to.setHours(23, 59, 59, 999);
+            dateQuery.$lte = to;
+        }
+
+        return dateQuery;
+    }
+
+    /**
      * Get payslip details for an employee
      * REQ-PY-1, REQ-PY-2
      */
     async getPayslip(employeeId: string, payslipId: string) {
+        // Debug logs
+        console.log('=== getPayslip DEBUG ===');
+        console.log('Request employeeId (from token):', employeeId);
+        console.log('Request employeeId type:', typeof employeeId);
+        console.log('PayslipId:', payslipId);
+
+        // Use the same query approach as getPayslipHistory - filter by both payslipId and employeeId
+        // This ensures MongoDB only returns payslips that belong to the employee
+        const employeeIdObj = new Types.ObjectId(employeeId);
+        const payslipIdObj = new Types.ObjectId(payslipId);
+
+        console.log('Converted employeeId to ObjectId:', employeeIdObj.toString());
+        console.log('Converted payslipId to ObjectId:', payslipIdObj.toString());
+
         const payslip = await this.payslipModel
-            .findById(payslipId)
+            .findOne({
+                _id: payslipIdObj,
+                employeeId: employeeIdObj,
+            })
             .populate('employeeId', 'employeeNumber firstName lastName')
             .populate('payrollRunId', 'runId payrollPeriod status')
             .lean();
 
+        console.log('Query result (payslip):', payslip ? 'Found' : 'Not found');
+
         if (!payslip) {
+            // Check if payslip exists to distinguish between 404 and 403
+            const payslipCheck = await this.payslipModel
+                .findById(payslipId)
+                .select('_id employeeId')
+                .lean();
+
+            console.log('Payslip check (exists?):', payslipCheck ? 'Yes' : 'No');
+            if (payslipCheck) {
+                console.log('Payslip employeeId from DB:', payslipCheck.employeeId);
+                console.log('Payslip employeeId type:', typeof payslipCheck.employeeId);
+                console.log('Payslip employeeId toString():', String(payslipCheck.employeeId));
+                console.log('Request employeeId toString():', String(employeeId));
+                console.log('Are they equal (string)?', String(payslipCheck.employeeId) === String(employeeId));
+
+                // Try ObjectId comparison
+                const dbEmployeeIdObj = new Types.ObjectId(payslipCheck.employeeId);
+                const reqEmployeeIdObj = new Types.ObjectId(employeeId);
+                console.log('DB employeeId ObjectId:', dbEmployeeIdObj.toString());
+                console.log('Req employeeId ObjectId:', reqEmployeeIdObj.toString());
+                console.log('Are they equal (ObjectId)?', dbEmployeeIdObj.equals(reqEmployeeIdObj));
+
+                // Payslip exists but doesn't belong to this employee
+                throw new ForbiddenException('You can only access your own payslips');
+            }
+            // Payslip doesn't exist
+            console.log('Payslip not found in database');
             throw new NotFoundException('Payslip not found');
         }
 
-        // Ensure employee can only access their own payslip
-        if (payslip.employeeId.toString() !== employeeId) {
-            throw new ForbiddenException('You can only access your own payslips');
-        }
-
+        console.log('=== getPayslip SUCCESS ===');
         return payslip;
     }
 
@@ -90,21 +167,61 @@ export class PayrollTrackingService {
      * REQ-PY-2
      */
     async getPayslipStatus(employeeId: string, payslipId: string) {
+        // Debug logs
+        console.log('=== getPayslipStatus DEBUG ===');
+        console.log('Request employeeId (from token):', employeeId);
+        console.log('Request employeeId type:', typeof employeeId);
+        console.log('PayslipId:', payslipId);
+
+        // Use the same query approach as getPayslipHistory - filter by both payslipId and employeeId
+        const employeeIdObj = new Types.ObjectId(employeeId);
+        const payslipIdObj = new Types.ObjectId(payslipId);
+
+        console.log('Converted employeeId to ObjectId:', employeeIdObj.toString());
+        console.log('Converted payslipId to ObjectId:', payslipIdObj.toString());
+
         const payslip = await this.payslipModel
-            .findById(payslipId)
+            .findOne({
+                _id: payslipIdObj,
+                employeeId: employeeIdObj,
+            })
             .select('employeeId paymentStatus payrollRunId createdAt')
             .populate('payrollRunId', 'runId payrollPeriod status paymentStatus')
             .lean();
 
+        console.log('Query result (payslip):', payslip ? 'Found' : 'Not found');
+
         if (!payslip) {
+            // Check if payslip exists to distinguish between 404 and 403
+            const payslipCheck = await this.payslipModel
+                .findById(payslipId)
+                .select('_id employeeId')
+                .lean();
+
+            console.log('Payslip check (exists?):', payslipCheck ? 'Yes' : 'No');
+            if (payslipCheck) {
+                console.log('Payslip employeeId from DB:', payslipCheck.employeeId);
+                console.log('Payslip employeeId type:', typeof payslipCheck.employeeId);
+                console.log('Payslip employeeId toString():', String(payslipCheck.employeeId));
+                console.log('Request employeeId toString():', String(employeeId));
+                console.log('Are they equal (string)?', String(payslipCheck.employeeId) === String(employeeId));
+
+                // Try ObjectId comparison
+                const dbEmployeeIdObj = new Types.ObjectId(payslipCheck.employeeId);
+                const reqEmployeeIdObj = new Types.ObjectId(employeeId);
+                console.log('DB employeeId ObjectId:', dbEmployeeIdObj.toString());
+                console.log('Req employeeId ObjectId:', reqEmployeeIdObj.toString());
+                console.log('Are they equal (ObjectId)?', dbEmployeeIdObj.equals(reqEmployeeIdObj));
+
+                // Payslip exists but doesn't belong to this employee
+                throw new ForbiddenException('You can only access your own payslips');
+            }
+            // Payslip doesn't exist
+            console.log('Payslip not found in database');
             throw new NotFoundException('Payslip not found');
         }
 
-        // Ensure employee can only access their own payslip
-        if (payslip.employeeId.toString() !== employeeId) {
-            throw new ForbiddenException('You can only access your own payslips');
-        }
-
+        console.log('=== getPayslipStatus SUCCESS ===');
         return {
             payslipId,
             paymentStatus: payslip.paymentStatus,
@@ -125,22 +242,17 @@ export class PayrollTrackingService {
             page = 1,
             limit = 10,
             sortBy = 'createdAt',
-      sortOrder = 'desc',
+            sortOrder = 'desc',
         } = filters;
 
         const query: any = {
             employeeId: new Types.ObjectId(employeeId),
         };
 
-        // Apply date filters
-        if (fromDate || toDate) {
-            query.createdAt = {};
-            if (fromDate) {
-                query.createdAt.$gte = new Date(fromDate);
-            }
-            if (toDate) {
-                query.createdAt.$lte = new Date(toDate);
-            }
+        // Apply date filters with validation
+        const dateQuery = this.buildDateQuery(fromDate, toDate);
+        if (dateQuery) {
+            query.createdAt = dateQuery;
         }
 
         // Apply payroll run filter
@@ -429,7 +541,10 @@ export class PayrollTrackingService {
             throw new NotFoundException('Payslip not found');
         }
 
-        if (payslip.employeeId.toString() !== employeeId) {
+        // Ensure employee can only dispute their own payslip
+        const payslipEmployeeIdObj = new Types.ObjectId(payslip.employeeId);
+        const requestEmployeeIdObj = new Types.ObjectId(employeeId);
+        if (!payslipEmployeeIdObj.equals(requestEmployeeIdObj)) {
             throw new ForbiddenException('You can only dispute your own payslips');
         }
 
@@ -510,7 +625,22 @@ export class PayrollTrackingService {
             throw new NotFoundException('Dispute not found');
         }
 
-        if (dispute.employeeId.toString() !== employeeId) {
+        // Ensure employee can only view their own disputes
+        // Handle both populated and unpopulated employeeId
+        let disputeEmployeeIdValue: string | Types.ObjectId;
+        if (dispute.employeeId && typeof dispute.employeeId === 'object' && '_id' in dispute.employeeId) {
+            // Populated: extract _id from the populated object
+            disputeEmployeeIdValue = (dispute.employeeId as any)._id;
+        } else {
+            // Not populated: use the ObjectId directly
+            disputeEmployeeIdValue = dispute.employeeId as any;
+        }
+
+        // Convert both to ObjectId for reliable comparison
+        const disputeEmployeeIdObj = new Types.ObjectId(disputeEmployeeIdValue);
+        const requestEmployeeIdObj = new Types.ObjectId(employeeId);
+
+        if (!disputeEmployeeIdObj.equals(requestEmployeeIdObj)) {
             throw new ForbiddenException('You can only view your own disputes');
         }
 
@@ -598,7 +728,22 @@ export class PayrollTrackingService {
             throw new NotFoundException('Claim not found');
         }
 
-        if (claim.employeeId.toString() !== employeeId) {
+        // Ensure employee can only view their own claims
+        // Handle both populated and unpopulated employeeId
+        let claimEmployeeIdValue: string | Types.ObjectId;
+        if (claim.employeeId && typeof claim.employeeId === 'object' && '_id' in claim.employeeId) {
+            // Populated: extract _id from the populated object
+            claimEmployeeIdValue = (claim.employeeId as any)._id;
+        } else {
+            // Not populated: use the ObjectId directly
+            claimEmployeeIdValue = claim.employeeId as any;
+        }
+
+        // Convert both to ObjectId for reliable comparison
+        const claimEmployeeIdObj = new Types.ObjectId(claimEmployeeIdValue);
+        const requestEmployeeIdObj = new Types.ObjectId(employeeId);
+
+        if (!claimEmployeeIdObj.equals(requestEmployeeIdObj)) {
             throw new ForbiddenException('You can only view your own claims');
         }
 
@@ -1124,7 +1269,7 @@ export class PayrollTrackingService {
      * Generate refund for approved dispute
      * REQ-PY-45
      */
-    async createRefundForDispute(disputeId: string, financeStaffId: string, createRefundDto: CreateRefundDto) {
+    async createRefundForDispute(disputeId: string, financeStaffId: string, createRefundDto?: CreateRefundDto) {
         const dispute = await this.disputesModel.findOne({ disputeId });
         if (!dispute) {
             throw new NotFoundException('Dispute not found');
@@ -1146,7 +1291,10 @@ export class PayrollTrackingService {
             throw new NotFoundException('Payslip not found for this dispute');
         }
 
-        // Calculate refund amount (the difference in the disputed amount)
+        // Calculate refund amount - use DTO amount if provided, otherwise throw error
+        if (!createRefundDto || !createRefundDto.amount) {
+            throw new BadRequestException('Refund amount is required');
+        }
         const refundAmount = createRefundDto.amount;
 
         // Create refund record
@@ -1155,7 +1303,7 @@ export class PayrollTrackingService {
             employeeId: dispute.employeeId,
             financeStaffId: new Types.ObjectId(financeStaffId),
             refundDetails: {
-                description: createRefundDto.description || `Refund for dispute ${dispute.disputeId}`,
+                description: createRefundDto?.description || `Refund for dispute ${dispute.disputeId}`,
                 amount: refundAmount,
             },
             status: RefundStatus.PENDING,
@@ -1180,7 +1328,7 @@ export class PayrollTrackingService {
      * Generate refund for approved claim
      * REQ-PY-46
      */
-    async createRefundForClaim(claimId: string, financeStaffId: string, createRefundDto: CreateRefundDto) {
+    async createRefundForClaim(claimId: string, financeStaffId: string, createRefundDto?: CreateRefundDto) {
         const claim = await this.claimsModel.findOne({ claimId });
         if (!claim) {
             throw new NotFoundException('Claim not found');
@@ -1205,7 +1353,7 @@ export class PayrollTrackingService {
             employeeId: claim.employeeId,
             financeStaffId: new Types.ObjectId(financeStaffId),
             refundDetails: {
-                description: createRefundDto.description || `Refund for claim ${claim.claimId}`,
+                description: createRefundDto?.description || `Refund for claim ${claim.claimId}`,
                 amount: refundAmount,
             },
             status: RefundStatus.PENDING,
@@ -1241,12 +1389,15 @@ export class PayrollTrackingService {
 
         if (year) {
             const startDate = new Date(year, 0, 1);
-            const endDate = new Date(year, 11, 31, 23, 59, 59);
+            const endDate = new Date(year, 11, 31, 23, 59, 59, 999);
             dateQuery.$gte = startDate;
             dateQuery.$lte = endDate;
         } else if (fromDate || toDate) {
-            if (fromDate) dateQuery.$gte = new Date(fromDate);
-            if (toDate) dateQuery.$lte = new Date(toDate);
+            const builtDateQuery = this.buildDateQuery(fromDate, toDate);
+            if (builtDateQuery) {
+                if (builtDateQuery.$gte) dateQuery.$gte = builtDateQuery.$gte;
+                if (builtDateQuery.$lte) dateQuery.$lte = builtDateQuery.$lte;
+            }
         }
 
         if (Object.keys(dateQuery).length > 0) {
@@ -1335,8 +1486,11 @@ export class PayrollTrackingService {
         const dateQuery: any = {};
 
         if (fromDate || toDate) {
-            if (fromDate) dateQuery.$gte = new Date(fromDate);
-            if (toDate) dateQuery.$lte = new Date(toDate);
+            const builtDateQuery = this.buildDateQuery(fromDate, toDate);
+            if (builtDateQuery) {
+                if (builtDateQuery.$gte) dateQuery.$gte = builtDateQuery.$gte;
+                if (builtDateQuery.$lte) dateQuery.$lte = builtDateQuery.$lte;
+            }
         }
 
         if (Object.keys(dateQuery).length > 0) {
@@ -1437,8 +1591,11 @@ export class PayrollTrackingService {
         const dateQuery: any = {};
 
         if (fromDate || toDate) {
-            if (fromDate) dateQuery.$gte = new Date(fromDate);
-            if (toDate) dateQuery.$lte = new Date(toDate);
+            const builtDateQuery = this.buildDateQuery(fromDate, toDate);
+            if (builtDateQuery) {
+                if (builtDateQuery.$gte) dateQuery.$gte = builtDateQuery.$gte;
+                if (builtDateQuery.$lte) dateQuery.$lte = builtDateQuery.$lte;
+            }
         }
 
         if (Object.keys(dateQuery).length > 0) {
@@ -1701,9 +1858,14 @@ export class PayrollTrackingService {
         const dateQuery: any = {};
 
         if (filters.fromDate || filters.toDate) {
-            if (filters.fromDate) dateQuery.$gte = new Date(filters.fromDate);
-            if (filters.toDate) dateQuery.$lte = new Date(filters.toDate);
-            query.createdAt = dateQuery;
+            const builtDateQuery = this.buildDateQuery(filters.fromDate, filters.toDate);
+            if (builtDateQuery) {
+                if (builtDateQuery.$gte) dateQuery.$gte = builtDateQuery.$gte;
+                if (builtDateQuery.$lte) dateQuery.$lte = builtDateQuery.$lte;
+            }
+            if (Object.keys(dateQuery).length > 0) {
+                query.createdAt = dateQuery;
+            }
         }
 
         if (filters.payrollRunId) {

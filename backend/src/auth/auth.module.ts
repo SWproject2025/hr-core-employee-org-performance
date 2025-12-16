@@ -7,11 +7,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/models/employee-profile.schema';
+import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profile/models/employee-system-role.schema';
 
 @Module({
   imports: [
     // Import Employee Schema so Auth can look up users
-    MongooseModule.forFeature([{ name: EmployeeProfile.name, schema: EmployeeProfileSchema }]),
+    MongooseModule.forFeature([
+      { name: EmployeeProfile.name, schema: EmployeeProfileSchema },
+      { name: EmployeeSystemRole.name, schema: EmployeeSystemRoleSchema },
+    ]),
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
