@@ -5,12 +5,12 @@ import { Search, Plus, Trash2, Eye, Calendar, X, Building2, User, Loader2, Check
 // Mock payrollService
 const payrollService = {
   getAllPayrollRuns: async (filters) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/payroll-runs?${new URLSearchParams(filters)}`);
+    const response = await fetch(`http://localhost:5000/payroll-execution/payroll-runs?${new URLSearchParams(filters)}`);
     if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   },
   createPayrollRun: async (data) => {
-    const response = await fetch('http://localhost:3000/payroll-execution/payroll-runs/start', {
+    const response = await fetch('http://localhost:5000/payroll-execution/payroll-runs/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -22,7 +22,7 @@ const payrollService = {
     return response.json();
   },
   deletePayrollRun: async (id) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/payroll-runs/${id}`, {
+    const response = await fetch(`http://localhost:5000/payroll-execution/payroll-runs/${id}`, {
       method: 'DELETE'
     });
     if (!response.ok) throw new Error('Failed to delete');

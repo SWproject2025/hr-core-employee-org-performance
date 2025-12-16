@@ -15,7 +15,7 @@ export class AuthService {
   // 1. Validate User Credentials
   async validateUser(email: string, pass: string): Promise<any> {
     // Explicitly select password since it's hidden by default
-    const user = await this.employeeModel.findOne({ email }).select('+password');
+    const user = await this.employeeModel.findOne({ workEmail: email }).select('+password');
     
     if (user && user.password && (await bcrypt.compare(pass, user.password))) {
       const { password, ...result } = user.toObject();
@@ -33,6 +33,7 @@ export class AuthService {
     };
     return {
       access_token: this.jwtService.sign(payload),
+      user: payload, // Return minimal user info or full user object
     };
   }
 

@@ -1,8 +1,11 @@
+// ============================================
+// FILE 1: frontend/src/app/(leaves)/my-leaves/page.tsx
+// ============================================
 "use client"
 import React, { useState, useEffect } from 'react';
 import { Calendar, FileText, Plus, Eye, X, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 interface LeaveType {
   _id: string;
@@ -40,7 +43,7 @@ interface LeaveRequest {
 }
 
 const EmployeeLeaveRequestPage = () => {
-  const [activeTab, setActiveTab] = useState<'request' | 'history' | 'balance'>('request');
+  const [activeTab, setActiveTab] = useState<'request' | 'balance'>('request');
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
@@ -57,9 +60,6 @@ const EmployeeLeaveRequestPage = () => {
     justification: '',
     attachmentId: ''
   });
-
-  // Mock current user - replace with actual auth
-  const currentUserId = 'employee-id-here';
 
   useEffect(() => {
     fetchData();
@@ -444,7 +444,7 @@ const LeaveRequestsTab = ({ requests, onViewDetail, onCancel, getStatusBadge }: 
       <div className="text-center py-12">
         <FileText size={48} className="mx-auto text-gray-400 mb-4" />
         <p className="text-lg text-gray-500">No leave requests yet</p>
-        <p className="text-sm text-gray-400 mt-2">Click "Request Leave" to submit your first request</p>
+        <p className="text-sm text-gray-400 mt-2">Click &quot;Request Leave&quot; to submit your first request</p>
       </div>
     );
   }

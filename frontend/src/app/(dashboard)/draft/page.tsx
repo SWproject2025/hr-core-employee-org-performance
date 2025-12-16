@@ -10,7 +10,7 @@ import DraftPreviewTable from "@/components/calc-draft-components/draft-preview-
 import ExceptionPanel from "@/components/calc-draft-components/exception-panel"
 import SummaryCards from "@/components/calc-draft-components/summary-cards"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 export default function DraftReviewPage() {
   const params = useParams()

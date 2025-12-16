@@ -39,10 +39,10 @@ export const Sidebar = () => {
         icon: Calendar,
         label: 'Leave Management',
         submenu: [
-          { id: 'my-leaves', label: 'My Leave Requests', path: '/leaves/my-requests' },
+          { id: 'my-leaves', label: 'My Leave Requests', path: '/leaves/my-leaves' },
           { id: 'leave-approvals', label: 'Leave Approvals', path: '/leaves/approvals' },
-          { id: 'leave-balance', label: 'Leave Balance', path: '/leaves/balance' },
-          { id: 'leave-config', label: 'Leave Configuration', path: '/leaves/admin/config' }
+          { id: 'leave-balance', label: 'Leave Balance', path: '/leaves/my-leaves' },
+          { id: 'leave-config', label: 'Leave Configuration', path: '/leaves/config' }
         ]
       },
       {
@@ -68,7 +68,7 @@ export const Sidebar = () => {
     }  
 
   return (
-    <div className="w-60 bg-slate-900 text-white h-screen flex flex-col overflow-y-auto">
+    <div className="w-60 bg-slate-900 text-white h-full flex flex-col overflow-y-auto">
       <div className="p-4 border-b border-slate-700">
         <span className="font-semibold text-sm">HR System</span>
       </div>

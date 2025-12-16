@@ -32,12 +32,12 @@ const RunDetailsPage = () => {
       let runData;
       
       // Try fetching by the ID directly (could be MongoDB _id or custom runId)
-      runResponse = await fetch(`http://localhost:3000/payroll-execution/payroll-runs/${runId}`);
+      runResponse = await fetch(`http://localhost:5000/payroll-execution/payroll-runs/${runId}`);
       
       if (!runResponse.ok) {
         // If that fails, try getting all runs and find by runId
         console.log('⚠️ Direct fetch failed, trying to find in all runs...');
-        const allRunsResponse = await fetch('http://localhost:3000/payroll-execution/payroll-runs');
+        const allRunsResponse = await fetch('http://localhost:5000/payroll-execution/payroll-runs');
         if (allRunsResponse.ok) {
           const allRuns = await allRunsResponse.json();
           console.log('📋 All runs:', allRuns);
@@ -67,7 +67,7 @@ const RunDetailsPage = () => {
       // Fetch employee payslips using the run's _id
       console.log('🔍 Fetching payslips for run ID:', actualRunId);
       const employeesResponse = await fetch(
-        `http://localhost:3000/payroll-execution/payslips?runId=${actualRunId}`
+        `http://localhost:5000/payroll-execution/payslips?runId=${actualRunId}`
       );
       
       let employeesData = [];
@@ -107,7 +107,7 @@ const RunDetailsPage = () => {
       // Use the actual _id for the API call
       const actualRunId = run._id || run.runId || runId;
       const response = await fetch(
-        `http://localhost:3000/payroll-execution/payroll-runs/${actualRunId}/publish`,
+        `http://localhost:5000/payroll-execution/payroll-runs/${actualRunId}/publish`,
         { method: 'PATCH' }
       );
       

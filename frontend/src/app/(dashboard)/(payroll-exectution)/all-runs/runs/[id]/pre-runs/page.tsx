@@ -3,19 +3,19 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertCircle, Edit2, X } from 'lucide-react';
 const payrollService = {
   getPendingSigningBonuses: async () => {
-    const response = await fetch('http://localhost:3000/payroll-execution/signing-bonuses/pending');
+    const response = await fetch('http://localhost:5000/payroll-execution/signing-bonuses/pending');
     if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   },
   
   getPendingBenefits: async () => {
-    const response = await fetch('http://localhost:3000/payroll-execution/benefits/pending');
+    const response = await fetch('http://localhost:5000/payroll-execution/benefits/pending');
     if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   },
   
   approveSigningBonus: async (id: string) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/approve`, {
+    const response = await fetch(`http://localhost:5000/payroll-execution/signing-bonuses/${id}/approve`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to approve');
@@ -23,7 +23,7 @@ const payrollService = {
   },
   
   rejectSigningBonus: async (id: string) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/reject`, {
+    const response = await fetch(`http://localhost:5000/payroll-execution/signing-bonuses/${id}/reject`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to reject');
@@ -31,7 +31,7 @@ const payrollService = {
   },
   
   editSigningBonus: async (id: string, givenAmount: number, paymentDate?: string) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/signing-bonuses/${id}/edit`, {
+    const response = await fetch(`http://localhost:5000/payroll-execution/signing-bonuses/${id}/edit`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ givenAmount, paymentDate })
@@ -41,7 +41,7 @@ const payrollService = {
   },
   
   approveBenefit: async (id: string) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/approve`, {
+    const response = await fetch(`http://localhost:5000/payroll-execution/benefits/${id}/approve`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to approve');
@@ -49,7 +49,7 @@ const payrollService = {
   },
   
   rejectBenefit: async (id: string) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/reject`, {
+    const response = await fetch(`http://localhost:5000/payroll-execution/benefits/${id}/reject`, {
       method: 'PATCH'
     });
     if (!response.ok) throw new Error('Failed to reject');
@@ -57,7 +57,7 @@ const payrollService = {
   },
   
   editBenefit: async (id: string, givenAmount: number) => {
-    const response = await fetch(`http://localhost:3000/payroll-execution/benefits/${id}/edit`, {
+    const response = await fetch(`http://localhost:5000/payroll-execution/benefits/${id}/edit`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ givenAmount })

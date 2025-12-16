@@ -11,7 +11,7 @@ import ExceptionList from "@/components/calc-draft-components/exception-list"
 import ResolutionModal from "@/components/calc-draft-components/resolution-modal"
 import { Button } from "@/components/calc-draft-ui/button" 
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 type ExceptionType =
   | "all"

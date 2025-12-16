@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Download, Send, Eye, Printer, Mail, X, FileText } from 'lucide-react';
 
-const API_URL = 'http://localhost:3000';
+const API_URL = 'http://localhost:5000';
 
 const FinalizedPayslipsPage = () => {
   const [payslips, setPayslips] = useState<any[]>([]);

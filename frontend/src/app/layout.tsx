@@ -4,6 +4,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/SideBar";
 import { Header } from "@/components/Header";
 import { Toaster } from 'react-hot-toast';
+import { AuthProvider } from "@/context/AuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="flex h-screen bg-gray-50">
+      <AuthProvider>
         <Toaster 
           position="top-right"
           toastOptions={{
@@ -57,11 +59,8 @@ export default function RootLayout({
             },
           }}
         />
-        <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Header />
-          <main className="flex-1 overflow-y-auto">{children}</main>
-        </div>
+        {children}
+      </AuthProvider>
       </body>
     </html>
   );
