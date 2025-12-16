@@ -7,10 +7,8 @@ import {
   DollarSign, 
   AlertTriangle, 
   Send,
-  Play,
   Download,
   Eye,
-  Edit,
   Check,
   X,
   ArrowLeft,
@@ -19,95 +17,62 @@ import {
   Clock,
   XCircle
 } from 'lucide-react';
-import { useParams } from 'next/navigation';
 
 const API_URL = "http://localhost:3000";
-
-// Mock user role - Replace with actual auth hook
-const useAuth = () => {
-  return {
-    user: { id: '123', name: 'John Doe' },
-    role: 'PAYROLL_SPECIALIST' // Change to test: PAYROLL_MANAGER, FINANCE_STAFF
-  };
+// [
+//   {
+//     _id: ObjectId('6940380702779cf63544e8fe'),
+//     employeeNumber: 'EMP-0001',
+//     fullName: 'Mohamed Shaker',
+//     systemRole: 'Payroll Manager'
+//   },
+//   {
+//     _id: ObjectId('6940380702779cf63544e8ff'),
+//     employeeNumber: 'EMP-0002',
+//     fullName: 'Fatima Khalil',
+//     systemRole: 'Finance Staff'
+//   },
+//   {
+//     _id: ObjectId('6940380702779cf63544e900'),
+//     employeeNumber: 'EMP-0003',
+//     fullName: 'Hossam Youssef',
+//     systemRole: 'Payroll Specialist'
+//   }
+// ]
+const RoleSwitcher = ({ currentRole, onRoleChange }) => {
+  return (
+    <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 border-2 border-blue-500 z-50">
+      <p className="text-xs font-semibold text-gray-700 mb-2">🧪 Test Role</p>
+      <select 
+        value={currentRole} 
+        onChange={(e) => onRoleChange(e.target.value)}
+        className="w-full px-3 py-2 border rounded text-sm"
+      >
+        <option value="PAYROLL_SPECIALIST">Payroll Specialist</option>
+        <option value="PAYROLL_MANAGER">Payroll Manager</option>
+        <option value="FINANCE_STAFF">Finance Staff</option>
+      </select>
+    </div>
+  );
 };
 
-interface PayrollRun {
-  _id: string;
-  runId: string;
-  status: string;
-  payrollPeriod: string;
-  entity: string;
-  employees: number;
-  exceptions: number;
-  totalGrossPay?: number;
-  totalDeductions?: number;
-  totalnetpay: number;
-  rejectionReason?: string;
-  isProcessing?: boolean;
-  processingStage?: string;
-}
-
-interface EmployeeDetail {
-  _id: string;
-  employeeId: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    code: string;
-    department: string;
-    bankAccountDetails?: any;
-  };
-  baseSalary: number;
-  allowances: number;
-  bonus?: number;
-  benefit?: number;
-  deductions: number;
-  netPay: number;
-  exceptions?: string;
-}
-
-interface PreRunItem {
-  _id: string;
-  employeeId: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    code: string;
-  };
-  type: string;
-  status: string;
-  givenAmount: number;
-  paymentDate?: string;
-  effectiveDate?: string;
-}
-
-interface ApprovalHistory {
-  _id: string;
-  action: string;
-  performedBy: string;
-  timestamp: string;
-  reason?: string;
-}
-
-
-
 const RunDetailsPage = () => {
-  const { user, role } = useAuth();
-  const { id } = useParams<{ id: string }>();
-  const [runId] = useState<string>(id);
-  const [run, setRun] = useState<PayrollRun | null>(null);
-  const [employees, setEmployees] = useState<EmployeeDetail[]>([]);
-  const [preRunItems, setPreRunItems] = useState<PreRunItem[]>([]);
-  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistory[]>([]);
+  const [role, setRole] = useState('PAYROLL_SPECIALIST');
+  const [runId] = useState('69404a00e76572e0511db320'); 
+  const [run, setRun] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [preRunItems, setPreRunItems] = useState([]);
+  const [approvalHistory, setApprovalHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'payroll' | 'preruns' | 'history'>('payroll');
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('payroll');
   
-  // Modal states
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [showUnfreezeModal, setShowUnfreezeModal] = useState(false);
   const [unfreezeReason, setUnfreezeReason] = useState('');
+
+  const user = { id: '123', name: 'John Doe' };
 
   useEffect(() => {
     if (runId) {
@@ -121,14 +86,14 @@ const RunDetailsPage = () => {
       setLoading(true);
       setError('');
       
-      // Fetch run details
+      // Correct endpoint: GET /payroll-execution/payroll-runs/:id
       const runResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}`);
       if (!runResponse.ok) throw new Error('Failed to fetch payroll run');
       
       const runData = await runResponse.json();
       setRun(runData);
       
-      // Fetch draft review data
+      // Correct endpoint: GET /payroll-execution/payroll-runs/:runId/review/draft
       const draftResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/review/draft`);
       if (draftResponse.ok) {
         const draftData = await draftResponse.json();
@@ -137,17 +102,17 @@ const RunDetailsPage = () => {
         }
       }
 
-      // Fetch pre-run items
+      // Correct endpoints for pre-run items
       const [bonusesRes, benefitsRes] = await Promise.all([
         fetch(`${API_URL}/payroll-execution/signing-bonuses/pending`),
         fetch(`${API_URL}/payroll-execution/benefits/pending`)
       ]);
 
-      let allPreRunItems: PreRunItem[] = [];
+      let allPreRunItems = [];
       
       if (bonusesRes.ok) {
         const bonuses = await bonusesRes.json();
-        allPreRunItems = [...allPreRunItems, ...bonuses.map((b: any) => ({
+        allPreRunItems = [...allPreRunItems, ...bonuses.map((b) => ({
           ...b,
           type: 'Signing Bonus'
         }))];
@@ -155,7 +120,7 @@ const RunDetailsPage = () => {
       
       if (benefitsRes.ok) {
         const benefits = await benefitsRes.json();
-        allPreRunItems = [...allPreRunItems, ...benefits.map((b: any) => ({
+        allPreRunItems = [...allPreRunItems, ...benefits.map((b) => ({
           ...b,
           type: b.benefitType || 'Benefit'
         }))];
@@ -163,7 +128,7 @@ const RunDetailsPage = () => {
 
       setPreRunItems(allPreRunItems);
       
-    } catch (error: any) {
+    } catch (error) {
       setError(error.message || 'Failed to load run details');
     } finally {
       setLoading(false);
@@ -172,25 +137,25 @@ const RunDetailsPage = () => {
 
   const fetchApprovalHistory = async () => {
     try {
+      // Correct endpoint: GET /payroll-execution/payroll-runs/:runId/approvals
       const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/approvals`);
       if (response.ok) {
         const data = await response.json();
-        setApprovalHistory(data);
+        setApprovalHistory(Array.isArray(data) ? data : []);
+      } else {
+        setApprovalHistory([]);
       }
     } catch (error) {
       console.error('Failed to fetch approval history:', error);
+      setApprovalHistory([]);
     }
   };
 
-  // ========================================
-  // ROLE-BASED ACTION HANDLERS
-  // ========================================
-
-  // PAYROLL SPECIALIST: Publish for review
   const handlePublish = async () => {
     if (!confirm('Send this payroll for manager approval?')) return;
     
     try {
+      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/publish
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/publish`,
         { method: 'PATCH' }
@@ -201,12 +166,11 @@ const RunDetailsPage = () => {
       alert('Payroll sent to Manager for review!');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error: any) {
+    } catch (error) {
       alert(error.message || 'Failed to publish payroll');
     }
   };
 
-  // MANAGER: Approve (send to finance)
   const handleManagerApprove = async () => {
     if (!confirm('Approve this payroll? It will be sent to Finance for final review.')) return;
     
@@ -216,21 +180,32 @@ const RunDetailsPage = () => {
         { 
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ approverId: user.id })
+          body: JSON.stringify({ approverId: "6940380702779cf63544e8fe" })
         }
       );
       
-      if (!response.ok) throw new Error('Failed to approve');
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = 'Failed to approve';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          errorMessage = errorText || errorMessage;
+        }
+        console.error('Server response:', errorText);
+        throw new Error(errorMessage);
+      }
       
       alert('Approved! Sent to Finance for final approval.');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error: any) {
-      alert(error.message || 'Failed to approve');
+    } catch (error) {
+      console.error('Approve error:', error);
+      alert(`Error: ${error.message}`);
     }
   };
 
-  // MANAGER: Reject (back to specialist)
   const handleManagerReject = async () => {
     if (!rejectionReason.trim()) {
       alert('Please provide a rejection reason');
@@ -238,6 +213,7 @@ const RunDetailsPage = () => {
     }
     
     try {
+      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/manager-reject
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/manager-reject`,
         {
@@ -250,43 +226,50 @@ const RunDetailsPage = () => {
         }
       );
       
-      if (!response.ok) throw new Error('Failed to reject');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reject');
+      }
       
       alert('Rejected and sent back to Payroll Specialist');
       setShowRejectModal(false);
       setRejectionReason('');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error: any) {
+    } catch (error) {
+      console.error('Reject error:', error);
       alert(error.message || 'Failed to reject');
     }
   };
 
-  // FINANCE: Approve (ready for freeze)
   const handleFinanceApprove = async () => {
     if (!confirm('Approve this payroll for finalization?')) return;
     
     try {
+      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/finance-approve
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-approve`,
         { 
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ approverId: user.id })
+          body: JSON.stringify({ approverId: "6940380702779cf63544e8ff" })
         }
       );
       
-      if (!response.ok) throw new Error('Failed to approve');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to approve');
+      }
       
       alert('Approved! Payroll Manager can now freeze it.');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error: any) {
+    } catch (error) {
+      console.error('Finance approve error:', error);
       alert(error.message || 'Failed to approve');
     }
   };
 
-  // FINANCE: Reject (back to specialist)
   const handleFinanceReject = async () => {
     if (!rejectionReason.trim()) {
       alert('Please provide a rejection reason');
@@ -294,6 +277,7 @@ const RunDetailsPage = () => {
     }
     
     try {
+      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/finance-reject
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-reject`,
         {
@@ -306,23 +290,27 @@ const RunDetailsPage = () => {
         }
       );
       
-      if (!response.ok) throw new Error('Failed to reject');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reject');
+      }
       
       alert('Rejected and sent back to Payroll Specialist');
       setShowRejectModal(false);
       setRejectionReason('');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error: any) {
+    } catch (error) {
+      console.error('Finance reject error:', error);
       alert(error.message || 'Failed to reject');
     }
   };
 
-  // MANAGER: Freeze (finalize)
   const handleFreeze = async () => {
     if (!confirm('Freeze this payroll? No further changes will be allowed.')) return;
     
     try {
+      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/freeze
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/freeze`,
         { 
@@ -337,12 +325,11 @@ const RunDetailsPage = () => {
       alert('Payroll frozen! Status: PAID');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error: any) {
+    } catch (error) {
       alert(error.message || 'Failed to freeze payroll');
     }
   };
 
-  // MANAGER: Unfreeze (exceptional cases)
   const handleUnfreeze = async () => {
     if (!unfreezeReason.trim()) {
       alert('Please provide a reason for unfreezing');
@@ -350,6 +337,7 @@ const RunDetailsPage = () => {
     }
     
     try {
+      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/unfreeze
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/unfreeze`,
         {
@@ -366,19 +354,51 @@ const RunDetailsPage = () => {
       setUnfreezeReason('');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error: any) {
+    } catch (error) {
       alert(error.message || 'Failed to unfreeze payroll');
     }
   };
 
-  // ========================================
-  // ROLE-BASED ACTION BUTTONS COMPONENT
-  // ========================================
+  const handleApprovePreRunItem = async (itemId, itemType) => {
+    try {
+      const endpoint = itemType === 'Signing Bonus' 
+        ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/approve`
+        : `${API_URL}/payroll-execution/benefits/${itemId}/approve`;
+      
+      const response = await fetch(endpoint, { method: 'PATCH' });
+      
+      if (!response.ok) throw new Error('Failed to approve item');
+      
+      alert('Item approved successfully!');
+      fetchRunDetails();
+    } catch (error) {
+      alert(error.message || 'Failed to approve item');
+    }
+  };
+
+  const handleRejectPreRunItem = async (itemId, itemType) => {
+    try {
+      const endpoint = itemType === 'Signing Bonus' 
+        ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/reject`
+        : `${API_URL}/payroll-execution/benefits/${itemId}/reject`;
+      
+      const response = await fetch(endpoint, { method: 'PATCH' });
+      
+      if (!response.ok) throw new Error('Failed to reject item');
+      
+      alert('Item rejected successfully!');
+      fetchRunDetails();
+    } catch (error) {
+      alert(error.message || 'Failed to reject item');
+    }
+  };
+
   const ActionButtons = () => {
     if (!run) return null;
 
-    // SPECIALIST: Can publish DRAFT runs
-    if (role === 'PAYROLL_SPECIALIST' && run.status === 'DRAFT') {
+    const normalizedStatus = run.status.toUpperCase().replace(/\s+/g, '_');
+
+    if (role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT') {
       return (
         <button
           onClick={handlePublish}
@@ -390,8 +410,7 @@ const RunDetailsPage = () => {
       );
     }
 
-    // MANAGER: Can approve/reject UNDER_REVIEW runs
-    if (role === 'PAYROLL_MANAGER' && run.status === 'UNDER_REVIEW') {
+    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW') {
       return (
         <div className="flex gap-2">
           <button
@@ -399,7 +418,7 @@ const RunDetailsPage = () => {
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
           >
             <CheckCircle size={16} />
-            Approve (Send to Finance)
+            Approve
           </button>
           <button
             onClick={() => setShowRejectModal(true)}
@@ -412,8 +431,7 @@ const RunDetailsPage = () => {
       );
     }
 
-    // FINANCE: Can approve/reject WAITING_FINANCE_APPROVAL runs
-    if (role === 'FINANCE_STAFF' && run.status === 'WAITING_FINANCE_APPROVAL') {
+    if (role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL') {
       return (
         <div className="flex gap-2">
           <button
@@ -421,7 +439,7 @@ const RunDetailsPage = () => {
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
           >
             <CheckCircle size={16} />
-            Approve (Ready to Freeze)
+            Approve
           </button>
           <button
             onClick={() => setShowRejectModal(true)}
@@ -434,8 +452,7 @@ const RunDetailsPage = () => {
       );
     }
 
-    // MANAGER: Can freeze APPROVED runs
-    if (role === 'PAYROLL_MANAGER' && run.status === 'APPROVED') {
+    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED') {
       return (
         <button
           onClick={handleFreeze}
@@ -447,14 +464,14 @@ const RunDetailsPage = () => {
       );
     }
 
-    if (role === 'PAYROLL_MANAGER' && run.status === 'PAID') {
+    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'PAID') {
       return (
         <button
           onClick={() => setShowUnfreezeModal(true)}
           className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2"
         >
           <Unlock size={16} />
-          Unfreeze (Exceptional)
+          Unfreeze
         </button>
       );
     }
@@ -462,15 +479,16 @@ const RunDetailsPage = () => {
     return null;
   };
 
-  const getBankStatus = (employee: EmployeeDetail): 'valid' | 'missing' | 'invalid' => {
+  const getBankStatus = (employee) => {
     if (!employee.employeeId?.bankAccountDetails) return 'missing';
     const bank = employee.employeeId.bankAccountDetails;
     if (!bank.accountNumber || !bank.bankName) return 'invalid';
     return 'valid';
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
+  const getStatusColor = (status) => {
+    const normalizedStatus = status.toUpperCase().replace(/\s+/g, '_');
+    const colors = {
       'DRAFT': 'bg-gray-200 text-gray-800',
       'UNDER_REVIEW': 'bg-yellow-200 text-yellow-800',
       'WAITING_FINANCE_APPROVAL': 'bg-blue-200 text-blue-800',
@@ -478,7 +496,7 @@ const RunDetailsPage = () => {
       'PAID': 'bg-purple-200 text-purple-800',
       'REJECTED': 'bg-red-200 text-red-800'
     };
-    return colors[status] || 'bg-gray-200 text-gray-800';
+    return colors[normalizedStatus] || 'bg-gray-200 text-gray-800';
   };
 
   if (loading) {
@@ -515,10 +533,39 @@ const RunDetailsPage = () => {
   const totalDeductions = employees.reduce((sum, emp) => sum + emp.deductions, 0);
   const totalNet = employees.reduce((sum, emp) => sum + emp.netPay, 0);
 
+  const normalizedStatus = run.status.toUpperCase().replace(/\s+/g, '_');
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      <RoleSwitcher currentRole={role} onRoleChange={setRole} />
+      
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users size={18} className="text-blue-600" />
+              <span className="text-sm font-semibold text-blue-900">
+                Current Role: {role.replace(/_/g, ' ')}
+              </span>
+            </div>
+            <span className="text-xs text-blue-700">
+              Status: {run.status} | 
+              {role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT' && ' ✅ Can publish'}
+              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW' && ' ✅ Can approve/reject'}
+              {role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL' && ' ✅ Can approve/reject'}
+              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED' && ' ✅ Can freeze'}
+              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'PAID' && ' ✅ Can unfreeze'}
+              {!(
+                (role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT') ||
+                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW') ||
+                (role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL') ||
+                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED') ||
+                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'PAID')
+              ) && ' ⚠️ No actions available'}
+            </span>
+          </div>
+        </div>
+
         <div>
           <button
             onClick={() => window.history.back()}
@@ -547,48 +594,33 @@ const RunDetailsPage = () => {
           </div>
         </div>
 
-        {/* Status-Based Alerts */}
-        {run.status === 'UNDER_REVIEW' && role === 'PAYROLL_MANAGER' && (
+        {normalizedStatus === 'UNDER_REVIEW' && role === 'PAYROLL_MANAGER' && (
           <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
             <p className="font-semibold text-yellow-900">⚠️ Manager Action Required</p>
             <p className="text-sm text-yellow-700">
-              This payroll is waiting for your approval. Review the details below and approve or reject.
+              This payroll is waiting for your approval.
             </p>
           </div>
         )}
 
-        {run.status === 'WAITING_FINANCE_APPROVAL' && role === 'FINANCE_STAFF' && (
+        {normalizedStatus === 'PENDING_FINANCE_APPROVAL' && role === 'FINANCE_STAFF' && (
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
             <p className="font-semibold text-blue-900">💼 Finance Action Required</p>
             <p className="text-sm text-blue-700">
-              This payroll has been approved by the Manager. Please review and give final approval.
+              This payroll has been approved by the Manager.
             </p>
           </div>
         )}
 
-        {run.status === 'APPROVED' && role === 'PAYROLL_MANAGER' && (
+        {normalizedStatus === 'APPROVED' && role === 'PAYROLL_MANAGER' && (
           <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
             <p className="font-semibold text-green-900">✅ Ready to Freeze</p>
             <p className="text-sm text-green-700">
-              Finance has approved this payroll. You can now freeze it to finalize payments.
+              Finance has approved this payroll.
             </p>
           </div>
         )}
 
-        {/* Processing Status Indicator */}
-        {run.status === 'DRAFT' && run.isProcessing && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <div>
-                <p className="font-semibold text-blue-900">Processing Payroll...</p>
-                <p className="text-sm text-blue-700">{run.processingStage || 'Calculating employee payments'}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Rejection Reason */}
         {run.rejectionReason && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
             <div className="flex items-start gap-3">
@@ -601,7 +633,6 @@ const RunDetailsPage = () => {
           </div>
         )}
 
-        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-2">
@@ -656,7 +687,6 @@ const RunDetailsPage = () => {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="bg-white rounded-lg shadow-md">
           <div className="border-b border-gray-200">
             <div className="flex">
@@ -693,18 +723,11 @@ const RunDetailsPage = () => {
             </div>
           </div>
 
-          {/* Employee Payroll Details Table */}
           {activeTab === 'payroll' && (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Base Salary</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Allowances</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Pay</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bank Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Flags</th>
                   </tr>
                 </thead>
@@ -771,7 +794,6 @@ const RunDetailsPage = () => {
             </div>
           )}
 
-          {/* Pre-Run Items Table */}
           {activeTab === 'preruns' && (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -826,12 +848,24 @@ const RunDetailsPage = () => {
                             <button className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View">
                               <Eye size={16} />
                             </button>
-                            <button className="p-1 text-green-600 hover:bg-green-50 rounded" title="Approve">
-                              <Check size={16} />
-                            </button>
-                            <button className="p-1 text-red-600 hover:bg-red-50 rounded" title="Reject">
-                              <X size={16} />
-                            </button>
+                            {item.status === 'PENDING' && (
+                              <>
+                                <button 
+                                  onClick={() => handleApprovePreRunItem(item._id, item.type)}
+                                  className="p-1 text-green-600 hover:bg-green-50 rounded" 
+                                  title="Approve"
+                                >
+                                  <Check size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => handleRejectPreRunItem(item._id, item.type)}
+                                  className="p-1 text-red-600 hover:bg-red-50 rounded" 
+                                  title="Reject"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -842,17 +876,16 @@ const RunDetailsPage = () => {
             </div>
           )}
 
-          {/* Approval History Timeline */}
           {activeTab === 'history' && (
             <div className="p-6">
-              {approvalHistory.length === 0 ? (
+              {!Array.isArray(approvalHistory) || approvalHistory.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <Clock size={48} className="mx-auto text-gray-400 mb-4" />
                   <p className="text-lg font-medium">No approval history yet</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {Array.isArray(approvalHistory) && approvalHistory.map((item, index) => (
+                  {approvalHistory.map((item, index) => (
                     <div key={item._id} className="flex gap-4">
                       <div className="flex flex-col items-center">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -884,7 +917,6 @@ const RunDetailsPage = () => {
           )}
         </div>
 
-        {/* Reject Modal */}
         {showRejectModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -920,7 +952,6 @@ const RunDetailsPage = () => {
           </div>
         )}
 
-        {/* Unfreeze Modal */}
         {showUnfreezeModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -960,4 +991,4 @@ const RunDetailsPage = () => {
   );
 };
 
-export default RunDetailsPage
+export default RunDetailsPage;

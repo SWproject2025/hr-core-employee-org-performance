@@ -11,7 +11,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../Common/Gaurds/roles.gaurd';
 import { Roles } from '../Common/Decorators/roles.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums'; 
-import { PayrollSeederService } from './seeders/payroll-seeder.service';
 
 @Controller('payroll-execution')
 @UseGuards(JwtAuthGuard, RolesGuard)
