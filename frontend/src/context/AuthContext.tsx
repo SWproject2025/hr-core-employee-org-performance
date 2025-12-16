@@ -1,98 +1,136 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { login, register, LoginCredentials, RegisterData } from '../api/auth';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import axios from 'axios';
 
 interface User {
-  id: string;
+  employeeProfileId: string;
   email: string;
+  roles: string[];
   firstName?: string;
   lastName?: string;
-  role: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  loading: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  token: string | null;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  hasRole: (role: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check initial state from localStorage
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (token && storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Failed to parse stored user", e);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+    // Check for stored token on mount
+    if (typeof window !== 'undefined') {
+      const storedToken = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
+      
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch (e) {
+          console.error('Error parsing stored user:', e);
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+        }
       }
+      setIsLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  const handleLogin = async (credentials: LoginCredentials) => {
+  const login = async (email: string, password: string) => {
     try {
-      const { access_token, user } = await login(credentials);
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
-      router.push('/');
-    } catch (error) {
-      console.error('Login failed', error);
-      throw error;
-    }
-  };
+      const response = await axios.post(`${API_URL}/auth/login`, {
+        email,
+        password,
+      });
 
-  const handleRegister = async (data: RegisterData) => {
-    try {
-      await register(data);
-      // Optional: Auto login after register
-      await handleLogin({ email: data.email, password: data.password });
-    } catch (error) {
-      console.error('Registration failed', error);
-      throw error;
+      const { access_token } = response.data;
+      
+      if (!access_token) {
+        throw new Error('No access token received');
+      }
+
+      // Decode JWT token to get user info
+      // JWT format: header.payload.signature
+      const tokenParts = access_token.split('.');
+      if (tokenParts.length !== 3) {
+        throw new Error('Invalid token format');
+      }
+
+      // Decode the payload (base64)
+      const payload = JSON.parse(atob(tokenParts[1]));
+      
+      // Extract user info from token payload
+      const userInfo: User = {
+        employeeProfileId: payload.employeeProfileId || payload.sub || '',
+        email: payload.email || email,
+        roles: payload.roles || [],
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+      };
+
+      setToken(access_token);
+      setUser(userInfo);
+
+      // Store in localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('token', access_token);
+        localStorage.setItem('user', JSON.stringify(userInfo));
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      throw new Error(error.response?.data?.message || error.message || 'Login failed');
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    setToken(null);
     setUser(null);
-    router.push('/login');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
+  };
+
+  const hasRole = (role: string): boolean => {
+    if (!user) return false;
+    return user.roles.includes(role);
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      login: handleLogin,
-      register: handleRegister,
-      logout,
-      isAuthenticated: !!user
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        login,
+        logout,
+        isAuthenticated: !!user && !!token,
+        isLoading,
+        hasRole,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
+}
+

@@ -10,10 +10,10 @@ const PayrollRunCreator = () => {
   });
   
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     // Validation
@@ -27,7 +27,7 @@ const PayrollRunCreator = () => {
     setResult(null);
     
     try {
-      const response = await fetch('http://localhost:5000/payroll-execution/payroll-runs/start', {
+      const response = await fetch('http://localhost:3000/payroll-execution/payroll-runs/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -54,7 +54,7 @@ const PayrollRunCreator = () => {
         entity: formData.entity // Keep entity
       });
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating payroll run:', err);
       setError(err.message || 'Failed to create payroll run. Please check console for details.');
     } finally {

@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/SideBar";
-import { Header } from "@/components/Header";
-import { Toaster } from 'react-hot-toast';
+import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "@/context/AuthContext";
 
 const geistSans = Geist({
@@ -26,41 +24,23 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="flex h-screen bg-gray-50">
-      <AuthProvider>
-        <Toaster 
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: '#363636',
-              color: '#fff',
-            },
-            success: {
-              duration: 3000,
-              iconTheme: {
-                primary: '#10b981',
-                secondary: '#fff',
-              },
-            },
-            error: {
+      <body>
+        <AuthProvider>
+          <Toaster 
+            position="top-right"
+            toastOptions={{
               duration: 4000,
-              iconTheme: {
-                primary: '#ef4444',
-                secondary: '#fff',
+              style: {
+                background: '#363636',
+                color: '#fff',
               },
-            },
-          }}
-        />
-        {children}
-      </AuthProvider>
+            }}
+          />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

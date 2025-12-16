@@ -1,9 +1,13 @@
+"use client";
 import Dashboard from "@/components/Dashboard";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
+    <ProtectedRoute>
+      <div className="p-6">
         <Dashboard />
-    </div>
+      </div>
+    </ProtectedRoute>
   );
 }
