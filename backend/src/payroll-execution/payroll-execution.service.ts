@@ -31,6 +31,7 @@ export class PayrollExecutionService {
     private payslipModel: Model<paySlip>,
     @InjectModel(EmployeeProfile.name)
     private employeeModel: Model<EmployeeProfile>,
+    // ✅ Inject CalcDraftService
     private calcDraftService: CalcDraftService,
   ) {}
 
@@ -619,7 +620,7 @@ export class PayrollExecutionService {
       );
     }
 
-    run.status = PayRollStatus.UNDER_REVIEW; // Fixed: Use enum value
+    run.status = PayRollStatus.UNDER_REVIEW;
     if (run) {
       await run.save();
     } else {
@@ -712,7 +713,9 @@ export class PayrollExecutionService {
     const runObjectId = await this._resolveRunObjectId(runId);
     const run = await this.payrollRunsModel.findById(runObjectId);
     if (!run) throw new NotFoundException('Payroll run not found');
-
+    const payslipsGenerated = await this.generatePayslips(runId);
+    if (!payslipsGenerated)
+      throw new BadRequestException('Payslips could not be generated');
     run.status = PayRollStatus.LOCKED;
     if (reason) run.rejectionReason = `Locked: ${reason}`;
     await run.save();
@@ -1025,29 +1028,28 @@ export class PayrollExecutionService {
     };
   }
   
+
   async getPayrollForFinanceReview(payrollRunId: string) {
     const runObjectId = await this._resolveRunObjectId(payrollRunId);
-  
+
     const run = await this.payrollRunsModel
       .findById(runObjectId)
       .populate('payrollSpecialistId', 'firstName lastName email')
       .populate('financeStaffId', 'firstName lastName email')
       .populate('payrollManagerId', 'firstName lastName email');
-  
+
     if (!run) throw new NotFoundException('Payroll run not found');
-  
+
     if (!run.managerApprovalDate) {
       throw new BadRequestException(
         'Payroll cannot be reviewed by finance before manager approval',
       );
     }
-  
-    // ✅ ADD .populate() HERE
-    const details = await this.employeePayrollDetailsModel
-      .find({ payrollRunId: runObjectId })
-      .populate('employeeId', 'firstName lastName email code department bankAccountDetails')
-      .exec();
-  
+
+    const details = await this.employeePayrollDetailsModel.find({
+      payrollRunId: runObjectId,
+    });
+
     return {
       runId: run.runId,
       reviewerRole: 'FINANCE_STAFF',
@@ -1063,7 +1065,6 @@ export class PayrollExecutionService {
       employees: details,
     };
   }
-
 
   private async _resolveRunObjectId(
     runIdOrId: string,

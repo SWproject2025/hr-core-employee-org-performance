@@ -284,7 +284,10 @@ export class CalcDraftService {
     return updatedRun;
   }
 
-  async processDraftGeneration(payrollRunId: mongoose.Types.ObjectId, employeeData: any[]): Promise<{
+  async processDraftGeneration(
+    payrollRunId: mongoose.Types.ObjectId, 
+    employeeData: any[]
+  ): Promise<{
     run: payrollRuns;
     payrollDetails: employeePayrollDetails[];
     exceptionsCount: number;
@@ -327,13 +330,15 @@ export class CalcDraftService {
         totalNetPay += salaryData.netSalary;
       }
       
+      // ✅ FIXED: Always keep status as DRAFT after calculations
+      // Payroll Specialist must manually review and publish
       const updatedRun = await this.payrollRunsModel.findByIdAndUpdate(
         payrollRunId,
         {
           employees: employeeData.length,
           exceptions: exceptionsCount,
           totalnetpay: Number(totalNetPay.toFixed(2)),
-          status: exceptionsCount > 0 ? PayRollStatus.UNDER_REVIEW : PayRollStatus.PENDING_FINANCE_APPROVAL,
+          status: PayRollStatus.DRAFT, 
           updatedAt: new Date(),
         },
         { new: true }
@@ -342,6 +347,8 @@ export class CalcDraftService {
       if (!updatedRun) {
         throw new Error(`Failed to update payroll run ${payrollRunId}`);
       }
+      
+      console.log(`✅ Draft generation complete: ${exceptionsCount} exceptions flagged, status remains DRAFT`);
       
       return {
         run: updatedRun,

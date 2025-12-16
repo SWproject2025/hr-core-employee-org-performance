@@ -17,6 +17,7 @@ import {
   Clock,
   XCircle
 } from 'lucide-react';
+import { useParams } from 'next/navigation';
 
 const API_URL = "http://localhost:3000";
 // [
@@ -58,7 +59,8 @@ const RoleSwitcher = ({ currentRole, onRoleChange }) => {
 
 const RunDetailsPage = () => {
   const [role, setRole] = useState('PAYROLL_SPECIALIST');
-  const [runId] = useState('69404a00e76572e0511db320'); 
+  const params = useParams()
+  const [runId] = useState(params.id); 
   const [run, setRun] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [preRunItems, setPreRunItems] = useState([]);
@@ -221,7 +223,7 @@ const RunDetailsPage = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             reason: rejectionReason,
-            approverId: user.id 
+            approverId:"6940380702779cf63544e8fe"
           })
         }
       );

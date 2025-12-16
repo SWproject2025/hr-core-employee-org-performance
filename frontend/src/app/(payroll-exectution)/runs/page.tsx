@@ -217,7 +217,6 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
   );
 };
 
-// Main All Runs Page Component
 const AllRunsPage = () => {
   const router = useRouter();
   const [runs, setRuns] = useState([]);
@@ -631,6 +630,7 @@ const AllRunsPage = () => {
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => {
             setShowCreateModal(false);
+            router.push(`/runs/${run.runId || run._id}/draft`);
             showNotification('Payroll run created successfully!');
             fetchPayrollRuns();
           }}
