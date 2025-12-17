@@ -69,7 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Invalid token format');
       }
 
-      // Decode the payload (base64)
       const payload = JSON.parse(atob(tokenParts[1]));
       
       // Extract user info from token payload
