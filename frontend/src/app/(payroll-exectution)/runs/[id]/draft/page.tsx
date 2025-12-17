@@ -1,6 +1,7 @@
 "use client"
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useParams, useRouter } from 'next/navigation';
 import { 
   AlertTriangle, 
   CheckCircle, 
@@ -27,15 +28,16 @@ import {
   Gift,
   X,
   Check,
-  Eye
+  Eye,
+  MessageSquare
 } from 'lucide-react';
-import { useParams } from 'next/navigation';
 
 const API_URL = "http://localhost:3000";
 
 // Types
 interface PayrollRun {
   runId: string;
+  _id: string;
   period: {
     month: string;
     year: number;
@@ -86,11 +88,13 @@ interface PreRunItem {
     _id: string;
     firstName: string;
     lastName: string;
+    email?: string;
   };
   type: string;
   status: string;
   givenAmount: number;
   paymentDate?: string;
+  benefitType?: string;
 }
 
 interface AdjustmentModalData {
@@ -103,6 +107,7 @@ interface AdjustmentModalData {
 
 const PayrollDraftPage = () => {
   const { id } = useParams();
+  const router = useRouter();
   const runId = id as string;
   
   // State
@@ -119,11 +124,17 @@ const PayrollDraftPage = () => {
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   
+  // Pre-run selection state
+  const [selectedPreRunItems, setSelectedPreRunItems] = useState<string[]>([]);
+  
   // Modal State
-  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [resolutionNote, setResolutionNote] = useState('');
   const [resolving, setResolving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  
+  // ✅ NEW: Enhanced exception modal state
+  const [showExceptionModal, setShowExceptionModal] = useState(false);
+  const [currentExceptionEmployee, setCurrentExceptionEmployee] = useState<Employee | null>(null);
   
   // Adjustment Modal
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
@@ -140,6 +151,7 @@ const PayrollDraftPage = () => {
   const [showEditPreRunModal, setShowEditPreRunModal] = useState(false);
   const [editingPreRunItem, setEditingPreRunItem] = useState<PreRunItem | null>(null);
   const [editAmount, setEditAmount] = useState(0);
+  const [editPaymentDate, setEditPaymentDate] = useState('');
   const [editingPreRun, setEditingPreRun] = useState(false);
 
   useEffect(() => {
@@ -168,6 +180,7 @@ const PayrollDraftPage = () => {
       
       const transformedData: PayrollRun = {
         runId: runData.run.runId,
+        _id: runData.run._id,
         period: {
           month: new Date(runData.run.payrollPeriod).toLocaleString('default', { month: 'long' }),
           year: new Date(runData.run.payrollPeriod).getFullYear(),
@@ -206,7 +219,7 @@ const PayrollDraftPage = () => {
 
       const allItems: PreRunItem[] = [
         ...bonusesRes.data.map((b: any) => ({ ...b, type: 'Signing Bonus' })),
-        ...benefitsRes.data.map((b: any) => ({ ...b, type: b.benefitType || 'Benefit' }))
+        ...benefitsRes.data.map((b: any) => ({ ...b, type: b.benefitType || 'Termination Benefit' }))
       ];
 
       setPreRunItems(allItems);
@@ -319,12 +332,17 @@ const PayrollDraftPage = () => {
       await axios.patch(endpoint);
       alert('Item approved successfully!');
       fetchPreRunItems();
+      fetchPayrollDraft();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to approve item');
     }
   };
 
   const handleRejectPreRunItem = async (item: PreRunItem) => {
+    if (!window.confirm('Are you sure you want to reject this item?')) {
+      return;
+    }
+    
     try {
       const endpoint = item.type === 'Signing Bonus'
         ? `${API_URL}/payroll-execution/signing-bonuses/${item._id}/reject`
@@ -333,6 +351,7 @@ const PayrollDraftPage = () => {
       await axios.patch(endpoint);
       alert('Item rejected successfully!');
       fetchPreRunItems();
+      fetchPayrollDraft();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to reject item');
     }
@@ -341,6 +360,7 @@ const PayrollDraftPage = () => {
   const openEditPreRunModal = (item: PreRunItem) => {
     setEditingPreRunItem(item);
     setEditAmount(item.givenAmount);
+    setEditPaymentDate(item.paymentDate ? new Date(item.paymentDate).toISOString().split('T')[0] : '');
     setShowEditPreRunModal(true);
   };
 
@@ -358,12 +378,18 @@ const PayrollDraftPage = () => {
         ? `${API_URL}/payroll-execution/signing-bonuses/${editingPreRunItem._id}/edit`
         : `${API_URL}/payroll-execution/benefits/${editingPreRunItem._id}/edit`;
       
-      await axios.patch(endpoint, { givenAmount: editAmount });
+      const payload: any = { givenAmount: editAmount };
+      if (editingPreRunItem.type === 'Signing Bonus' && editPaymentDate) {
+        payload.paymentDate = editPaymentDate;
+      }
+      
+      await axios.patch(endpoint, payload);
       
       alert('Item updated successfully!');
       setShowEditPreRunModal(false);
       setEditingPreRunItem(null);
       fetchPreRunItems();
+      fetchPayrollDraft();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to update item');
     } finally {
@@ -371,9 +397,95 @@ const PayrollDraftPage = () => {
     }
   };
 
-  // ============ EXCEPTION HANDLERS ============
+  const toggleSelectPreRunItem = (id: string) => {
+    setSelectedPreRunItems(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
 
-  const handleResolveException = async (employeeId: string) => {
+  const selectAllPreRunItems = () => {
+    if (selectedPreRunItems.length === preRunItems.length && preRunItems.length > 0) {
+      setSelectedPreRunItems([]);
+    } else {
+      setSelectedPreRunItems(preRunItems.map(item => item._id));
+    }
+  };
+
+  const handleBulkApprovePreRun = async () => {
+    if (selectedPreRunItems.length === 0) {
+      alert('Please select items first');
+      return;
+    }
+
+    if (!window.confirm(`Approve ${selectedPreRunItems.length} items?`)) return;
+
+    try {
+      await Promise.all(
+        selectedPreRunItems.map(async (itemId) => {
+          const item = preRunItems.find(i => i._id === itemId);
+          if (item) {
+            const endpoint = item.type === 'Signing Bonus'
+              ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/approve`
+              : `${API_URL}/payroll-execution/benefits/${itemId}/approve`;
+            await axios.patch(endpoint);
+          }
+        })
+      );
+      alert('Bulk approval completed successfully!');
+      setSelectedPreRunItems([]);
+      fetchPreRunItems();
+      fetchPayrollDraft();
+    } catch (err) {
+      alert('Some items failed to approve');
+    }
+  };
+
+  const handleBulkRejectPreRun = async () => {
+    if (selectedPreRunItems.length === 0) {
+      alert('Please select items first');
+      return;
+    }
+
+    if (!window.confirm(`Reject ${selectedPreRunItems.length} items?`)) return;
+
+    try {
+      await Promise.all(
+        selectedPreRunItems.map(async (itemId) => {
+          const item = preRunItems.find(i => i._id === itemId);
+          if (item) {
+            const endpoint = item.type === 'Signing Bonus'
+              ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/reject`
+              : `${API_URL}/payroll-execution/benefits/${itemId}/reject`;
+            await axios.patch(endpoint);
+          }
+        })
+      );
+      alert('Bulk rejection completed successfully!');
+      setSelectedPreRunItems([]);
+      fetchPreRunItems();
+      fetchPayrollDraft();
+    } catch (err) {
+      alert('Some items failed to reject');
+    }
+  };
+
+  // ============ ENHANCED EXCEPTION HANDLERS (FROM EXCEPTION RESOLUTION PAGE) ============
+  
+  const openExceptionModal = (employee: Employee) => {
+    setCurrentExceptionEmployee(employee);
+    setResolutionNote('');
+    setShowExceptionModal(true);
+  };
+
+  const closeExceptionModal = () => {
+    setShowExceptionModal(false);
+    setCurrentExceptionEmployee(null);
+    setResolutionNote('');
+  };
+
+  const handleResolveException = async () => {
+    if (!currentExceptionEmployee) return;
+    
     if (!resolutionNote.trim()) {
       alert('Please provide a resolution note');
       return;
@@ -383,12 +495,12 @@ const PayrollDraftPage = () => {
       setResolving(true);
       
       await axios.patch(
-        `${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions/${employeeId}/resolve`,
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions/${currentExceptionEmployee.id}/resolve`,
         { resolutionNote }
       );
       
       setEmployees(prev => prev.map(emp => 
-        emp.id === employeeId ? { ...emp, exceptions: null } : emp
+        emp.id === currentExceptionEmployee.id ? { ...emp, exceptions: null } : emp
       ));
       
       if (payrollRun) {
@@ -396,14 +508,13 @@ const PayrollDraftPage = () => {
           ...prev,
           statistics: {
             ...prev.statistics,
-            withExceptions: employees.filter(e => e.id !== employeeId && e.exceptions).length
+            withExceptions: employees.filter(e => e.id !== currentExceptionEmployee.id && e.exceptions).length
           }
         } : null);
       }
       
-      setSelectedEmployee(null);
-      setResolutionNote('');
       alert('Exception resolved successfully!');
+      closeExceptionModal();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to resolve exception');
     } finally {
@@ -411,11 +522,28 @@ const PayrollDraftPage = () => {
     }
   };
 
+  const getSeverityBadge = (severity: string) => {
+    const severityMap: any = {
+      'LOW': 'bg-blue-100 text-blue-700 border-blue-200',
+      'MEDIUM': 'bg-amber-100 text-amber-700 border-amber-200',
+      'HIGH': 'bg-orange-100 text-orange-700 border-orange-200',
+      'CRITICAL': 'bg-red-100 text-red-700 border-red-200'
+    };
+    return severityMap[severity] || severityMap.MEDIUM;
+  };
+
+  const getSeverityIcon = (severity: string) => {
+    if (severity === 'CRITICAL' || severity === 'HIGH') {
+      return <AlertCircle className="w-4 h-4" />;
+    }
+    return <AlertTriangle className="w-4 h-4" />;
+  };
+
   // ============ PUBLISH HANDLER ============
 
   const handlePublishForApproval = async () => {
     const exceptionsCount = employees.filter(e => e.exceptions).length;
-    const pendingPreRunCount = preRunItems.filter(i => i.status === 'PENDING').length;
+    const pendingPreRunCount = preRunItems.filter(i => i.status === 'PENDING' || i.status === 'pending').length;
     
     if (pendingPreRunCount > 0) {
       alert(`There are ${pendingPreRunCount} pending pre-run items. Please approve or reject them before publishing.`);
@@ -432,7 +560,7 @@ const PayrollDraftPage = () => {
       setPublishing(true);
       await axios.patch(`${API_URL}/payroll-execution/payroll-runs/${runId}/publish`);
       alert('Payroll successfully published for manager and finance approval!');
-      await fetchPayrollDraft();
+      router.push(`/runs/${runId}`);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to publish payroll for approval');
     } finally {
@@ -495,7 +623,7 @@ const PayrollDraftPage = () => {
 
   const departments = [...new Set(employees.map(e => e.department))];
   const exceptionsCount = employees.filter(e => e.exceptions).length;
-  const pendingPreRunCount = preRunItems.filter(i => i.status === 'PENDING').length;
+  const pendingPreRunCount = preRunItems.filter(i => i.status === 'PENDING' || i.status === 'pending').length;
 
   // ============ RENDER ============
 
@@ -802,6 +930,18 @@ const PayrollDraftPage = () => {
                               >
                                 {expandedRows.has(employee.id) ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                               </button>
+                              
+                              {/* ✅ NEW: Exception resolution button */}
+                              {employee.exceptions && (
+                                <button
+                                  onClick={() => openExceptionModal(employee)}
+                                  className="p-2 text-orange-600 hover:bg-orange-50 rounded"
+                                  title="Resolve Exception"
+                                >
+                                  <AlertCircle size={18} />
+                                </button>
+                              )}
+                              
                               <button
                                 onClick={() => openAdjustmentModal(employee, 'bonus')}
                                 className="p-2 text-green-600 hover:bg-green-50 rounded"
@@ -925,7 +1065,7 @@ const PayrollDraftPage = () => {
                                     </div>
                                   </div>
 
-                                  {/* Exceptions */}
+                                  {/* ✅ UPDATED: Exception Summary (no inline resolution) */}
                                   {employee.exceptions && (
                                     <div className="bg-orange-50 rounded-lg p-5 border-2 border-orange-300">
                                       <h4 className="font-bold text-orange-900 mb-4 flex items-center gap-2">
@@ -933,8 +1073,8 @@ const PayrollDraftPage = () => {
                                         Exception Details
                                       </h4>
                                       {employee.exceptions.map((exception, idx) => (
-                                        <div key={idx} className="mb-4 last:mb-0">
-                                          <div className="flex items-start gap-3 mb-3">
+                                        <div key={idx} className="mb-3 last:mb-0">
+                                          <div className="flex items-start gap-3">
                                             <AlertCircle className="text-orange-600 mt-1 flex-shrink-0" size={20} />
                                             <div className="flex-1">
                                               <p className="font-semibold text-orange-900 mb-1">
@@ -947,46 +1087,15 @@ const PayrollDraftPage = () => {
                                               </p>
                                             </div>
                                           </div>
-                                          
-                                          {selectedEmployee === employee.id ? (
-                                            <div className="mt-3 p-3 bg-white rounded border border-orange-200">
-                                              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                                Resolution Note
-                                              </label>
-                                              <textarea
-                                                value={resolutionNote}
-                                                onChange={(e) => setResolutionNote(e.target.value)}
-                                                placeholder="Explain how this exception was resolved..."
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-3"
-                                                rows={3}
-                                              />
-                                              <div className="flex gap-2">
-                                                <button
-                                                  onClick={() => handleResolveException(employee.id)}
-                                                  disabled={resolving}
-                                                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold flex items-center justify-center gap-2"
-                                                >
-                                                  <CheckSquare size={16} />
-                                                  {resolving ? 'Resolving...' : 'Mark Resolved'}
-                                                </button>
-                                                <button
-                                                  onClick={() => { setSelectedEmployee(null); setResolutionNote(''); }}
-                                                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
-                                                >
-                                                  Cancel
-                                                </button>
-                                              </div>
-                                            </div>
-                                          ) : (
-                                            <button
-                                              onClick={() => setSelectedEmployee(employee.id)}
-                                              className="mt-2 w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold"
-                                            >
-                                              Resolve Exception
-                                            </button>
-                                          )}
                                         </div>
                                       ))}
+                                      <button
+                                        onClick={() => openExceptionModal(employee)}
+                                        className="mt-3 w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold flex items-center justify-center gap-2"
+                                      >
+                                        <CheckSquare size={16} />
+                                        Resolve Exception
+                                      </button>
                                     </div>
                                   )}
                                 </div>
@@ -1004,99 +1113,250 @@ const PayrollDraftPage = () => {
 
           {/* Pre-Run Items Tab Content */}
           {activeTab === 'prerun' && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Employee</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Type</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Status</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase">Amount</th>
-                    <th className="px-6 py-4 text-center text-xs font-bold text-gray-700 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {preRunItems.length === 0 ? (
+            <>
+              {selectedPreRunItems.length > 0 && (
+                <div className="p-4 bg-blue-50 flex items-center justify-between border-b">
+                  <span className="text-sm font-medium text-gray-700">
+                    {selectedPreRunItems.length} item(s) selected
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleBulkApprovePreRun}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm font-semibold"
+                    >
+                      <CheckCircle size={16} />
+                      Bulk Approve
+                    </button>
+                    <button
+                      onClick={handleBulkRejectPreRun}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 text-sm font-semibold"
+                    >
+                      <XCircle size={16} />
+                      Bulk Reject
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                        <CheckCircle size={48} className="mx-auto text-green-400 mb-3" />
-                        <p className="font-medium">No pre-run items</p>
-                        <p className="text-sm">All signing bonuses and benefits have been processed.</p>
-                      </td>
+                      <th className="px-6 py-4 text-left">
+                        <input
+                          type="checkbox"
+                          checked={selectedPreRunItems.length === preRunItems.length && preRunItems.length > 0}
+                          onChange={selectAllPreRunItems}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Employee</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Type</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Status</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase">Amount</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Date</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-700 uppercase">Actions</th>
                     </tr>
-                  ) : (
-                    preRunItems.map((item) => (
-                      <tr key={item._id} className={`hover:bg-gray-50 ${item.status === 'PENDING' ? 'bg-yellow-50' : ''}`}>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                              <User size={20} className="text-purple-600" />
-                            </div>
-                            <div>
-                              <p className="font-semibold text-gray-900">
-                                {item.employeeId?.firstName} {item.employeeId?.lastName}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="px-3 py-1 rounded-lg text-xs font-semibold bg-purple-200 text-purple-800">
-                            {item.type}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                            item.status === 'PENDING' ? 'bg-yellow-200 text-yellow-800' :
-                            item.status === 'APPROVED' ? 'bg-green-200 text-green-800' :
-                            'bg-red-200 text-red-800'
-                          }`}>
-                            {item.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right font-bold text-gray-900">
-                          ${(item.givenAmount || 0).toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-center gap-2">
-                            {item.status === 'PENDING' && (
-                              <>
-                                <button
-                                  onClick={() => openEditPreRunModal(item)}
-                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded"
-                                  title="Edit Amount"
-                                >
-                                  <Edit3 size={18} />
-                                </button>
-                                <button
-                                  onClick={() => handleApprovePreRunItem(item)}
-                                  className="p-2 text-green-600 hover:bg-green-50 rounded"
-                                  title="Approve"
-                                >
-                                  <Check size={18} />
-                                </button>
-                                <button
-                                  onClick={() => handleRejectPreRunItem(item)}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded"
-                                  title="Reject"
-                                >
-                                  <X size={18} />
-                                </button>
-                              </>
-                            )}
-                            {item.status !== 'PENDING' && (
-                              <span className="text-gray-400 text-sm">No actions</span>
-                            )}
-                          </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {preRunItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                          <CheckCircle size={48} className="mx-auto text-green-400 mb-3" />
+                          <p className="font-medium">No pre-run items</p>
+                          <p className="text-sm">All signing bonuses and benefits have been processed.</p>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ) : (
+                      preRunItems.map((item) => (
+                        <tr key={item._id} className={`hover:bg-gray-50 ${
+                          (item.status === 'PENDING' || item.status === 'pending') ? 'bg-yellow-50' : ''
+                        }`}>
+                          <td className="px-6 py-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedPreRunItems.includes(item._id)}
+                              onChange={() => toggleSelectPreRunItem(item._id)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                                <User size={20} className="text-purple-600" />
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900">
+                                  {item.employeeId?.firstName} {item.employeeId?.lastName}
+                                </p>
+                                {item.employeeId?.email && (
+                                  <p className="text-xs text-gray-500">{item.employeeId.email}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-3 py-1 rounded-lg text-xs font-semibold bg-purple-200 text-purple-800">
+                              {item.type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                              (item.status === 'PENDING' || item.status === 'pending') ? 'bg-yellow-200 text-yellow-800' :
+                              (item.status === 'APPROVED' || item.status === 'approved') ? 'bg-green-200 text-green-800' :
+                              'bg-red-200 text-red-800'
+                            }`}>
+                              {item.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold text-gray-900">
+                            ${(item.givenAmount || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            {item.paymentDate ? new Date(item.paymentDate).toLocaleDateString() : 'Not set'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-center gap-2">
+                              {(item.status === 'PENDING' || item.status === 'pending') && (
+                                <>
+                                  <button
+                                    onClick={() => openEditPreRunModal(item)}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Edit Amount"
+                                  >
+                                    <Edit3 size={18} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleApprovePreRunItem(item)}
+                                    className="p-2 text-green-600 hover:bg-green-50 rounded"
+                                    title="Approve"
+                                  >
+                                    <Check size={18} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectPreRunItem(item)}
+                                    className="p-2 text-red-600 hover:bg-red-50 rounded"
+                                    title="Reject"
+                                  >
+                                    <X size={18} />
+                                  </button>
+                                </>
+                              )}
+                              {item.status !== 'PENDING' && item.status !== 'pending' && (
+                                <span className="text-gray-400 text-sm">No actions</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
+
+      {/* ✅ NEW: Enhanced Exception Resolution Modal (FROM EXCEPTION RESOLUTION PAGE) */}
+      {showExceptionModal && currentExceptionEmployee && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="text-2xl font-bold text-slate-900">Resolve Exception</h3>
+                <p className="text-sm text-slate-500 mt-1">Review and document the resolution</p>
+              </div>
+              <button
+                onClick={closeExceptionModal}
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Employee</p>
+                <p className="text-base font-semibold text-slate-900">{currentExceptionEmployee.name}</p>
+                <p className="text-sm text-slate-600 font-mono mt-0.5">{currentExceptionEmployee.id}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Department</p>
+                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
+                    {currentExceptionEmployee.department}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Position</p>
+                  <span className="text-sm font-medium text-slate-900">
+                    {currentExceptionEmployee.position}
+                  </span>
+                </div>
+              </div>
+
+              {currentExceptionEmployee.exceptions && (
+                <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+                  <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-3">Exception Details</p>
+                  {currentExceptionEmployee.exceptions.map((exception, idx) => (
+                    <div key={idx} className="mb-3 last:mb-0">
+                      <div className="flex items-start gap-2 mb-2">
+                        {getSeverityIcon(exception.severity)}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-semibold text-orange-900 text-sm">
+                              {getExceptionTypeLabel(exception.type)}
+                            </p>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold border inline-flex items-center gap-1 ${getSeverityBadge(exception.severity)}`}>
+                              {exception.severity}
+                            </span>
+                          </div>
+                          <p className="text-sm text-orange-700 leading-relaxed">{exception.message}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  <MessageSquare className="w-4 h-4 inline mr-1.5" />
+                  Resolution Note *
+                </label>
+                <textarea
+                  value={resolutionNote}
+                  onChange={(e) => setResolutionNote(e.target.value)}
+                  placeholder="Describe how this exception was resolved, including any actions taken..."
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none bg-white text-slate-900"
+                  rows={5}
+                />
+                <p className="text-xs text-slate-500 mt-2">This note will be permanently recorded with the resolution.</p>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-slate-200">
+                <button
+                  onClick={closeExceptionModal}
+                  className="flex-1 px-6 py-3 border border-slate-300 rounded-xl hover:bg-slate-50 transition font-semibold text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResolveException}
+                  disabled={!resolutionNote.trim() || resolving}
+                  className="flex-1 px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2 font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Check className="w-5 h-5" />
+                  {resolving ? 'Resolving...' : 'Resolve Exception'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Adjustment Modal */}
       {showAdjustmentModal && (
@@ -1174,16 +1434,30 @@ const PayrollDraftPage = () => {
               </span>
             </p>
             
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Amount (USD)</label>
-              <input
-                type="number"
-                value={editAmount}
-                onChange={(e) => setEditAmount(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter amount..."
-                min="0"
-              />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Amount (USD) *</label>
+                <input
+                  type="number"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(Number(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter amount..."
+                  min="0"
+                />
+              </div>
+
+              {editingPreRunItem.type === 'Signing Bonus' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Payment Date</label>
+                  <input
+                    type="date"
+                    value={editPaymentDate}
+                    onChange={(e) => setEditPaymentDate(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
             </div>
             
             <div className="flex gap-2 mt-6">
