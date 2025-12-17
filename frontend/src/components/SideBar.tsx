@@ -54,7 +54,7 @@ export const Sidebar = () => {
         icon: Play,
         label: 'Payroll Runs',
         submenu: [
-          { id: 'all-runs', label: 'All Runs', path: '/all-runs/runs' },
+          { id: 'all-runs', label: 'All Runs', path: '/runs' },
           { id: 'finalized-payslips', label: 'Finalized Payslips', path: '/payslips' },
           { id: 'exceptions', label: 'Exceptions', path: '/exceptions' },
           { id: 'bank-files', label: 'Bank Files', path: '/bank-files' }
