@@ -99,8 +99,12 @@ export class CalcDraftService {
                         terminationBenefit +
                         leaveCompensation;
     
+    // ✅ FIXED: Use firstName/lastName
+    const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown';
+    const employeeCode = employee.code || employee.employeeNumber || employee._id.toString();
+    
     if (grossSalary < 0) {
-      throw new Error(`Invalid gross salary calculation for employee ${employee.name}: ${employee.code}`);
+      throw new Error(`Invalid gross salary calculation for employee ${employeeName}: ${employeeCode}`);
     }
     return grossSalary;
   }
@@ -200,8 +204,11 @@ export class CalcDraftService {
       
       const netSalary = grossSalary - taxDeduction - insuranceDeduction - penaltiesData.totalPenalties;
       
+      // ✅ FIXED: Use firstName/lastName instead of name
+      const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown';
+      
       if (netSalary < 0) {
-        throw new Error(`Net salary cannot be negative for employee ${employee.name}`);
+        throw new Error(`Net salary cannot be negative for employee ${employeeName}`);
       }
       
       return {
@@ -215,7 +222,9 @@ export class CalcDraftService {
         benefit
       };
     } catch (error) {
-      throw new Error(`Error calculating net salary for employee ${employee.name}: ${error.message}`);
+      // ✅ FIXED: Use firstName/lastName
+      const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown';
+      throw new Error(`Error calculating net salary for employee ${employeeName}: ${error.message}`);
     }
   }
 
@@ -235,25 +244,28 @@ export class CalcDraftService {
   async flagAnomalies(payrollRunId: mongoose.Types.ObjectId, employee: any): Promise<string[]> {
     const exceptions: string[] = [];
     
-    if (!employee.bankAccountNumber || !employee.bankName) {
-      exceptions.push(`MISSING_BANK_DETAILS: Employee ${employee.name} (${employee.code}) has missing or incomplete bank details`);
+    // ✅ FIXED: Check nested bankAccountDetails object
+    if (!employee.bankAccountDetails || 
+        !employee.bankAccountDetails.accountNumber || 
+        !employee.bankAccountDetails.bankName) {
+      exceptions.push('Missing bank details');
     }
     
     try {
       const salaryData = await this.calculateNetSalary(employee);
       if (salaryData.netSalary < 0) {
-        exceptions.push(`NEGATIVE_NET_PAY: Employee ${employee.name} (${employee.code}) has negative net pay: ${salaryData.netSalary}`);
+        exceptions.push('Negative net pay');
       }
       
       if (!employee.baseSalary || employee.baseSalary <= 0) {
-        exceptions.push(`ZERO_BASE_SALARY: Employee ${employee.name} (${employee.code}) has zero or missing base salary`);
+        exceptions.push('Zero base salary');
       }
       
       if (salaryData.grossSalary > 0 && salaryData.penalties > salaryData.grossSalary * 0.5) {
-        exceptions.push(`EXCESSIVE_PENALTIES: Employee ${employee.name} (${employee.code}) has penalties exceeding 50% of gross salary`);
+        exceptions.push('Excessive penalties');
       }
     } catch (error) {
-      exceptions.push(`CALCULATION_ERROR: Failed to calculate salary for employee ${employee.name} (${employee.code}): ${error.message}`);
+      exceptions.push(`Calculation error: ${error.message}`);
     }
     
     return exceptions;

@@ -147,25 +147,77 @@ const DEPARTMENTS = [
 
 const POSITIONS = [
   {
-    title: 'Junior Software Engineer',
+    name: 'Junior Software Engineer',
+    code: 'JSE',
     level: 'Junior',
     department: 'Engineering',
   },
-  { title: 'Software Engineer', level: 'Mid', department: 'Engineering' },
   {
-    title: 'Senior Software Engineer',
+    name: 'Software Engineer',
+    code: 'SE',
+    level: 'Mid',
+    department: 'Engineering',
+  },
+  {
+    name: 'Senior Software Engineer',
+    code: 'SSE',
     level: 'Senior',
     department: 'Engineering',
   },
-  { title: 'Lead Engineer', level: 'Lead', department: 'Engineering' },
-  { title: 'HR Specialist', level: 'Mid', department: 'Human Resources' },
-  { title: 'HR Manager', level: 'Senior', department: 'Human Resources' },
-  { title: 'Financial Analyst', level: 'Mid', department: 'Finance' },
-  { title: 'Finance Manager', level: 'Senior', department: 'Finance' },
-  { title: 'Marketing Coordinator', level: 'Junior', department: 'Marketing' },
-  { title: 'Marketing Manager', level: 'Senior', department: 'Marketing' },
-  { title: 'Sales Representative', level: 'Junior', department: 'Sales' },
-  { title: 'Operations Manager', level: 'Senior', department: 'Operations' },
+  {
+    name: 'Lead Engineer',
+    code: 'LE',
+    level: 'Lead',
+    department: 'Engineering',
+  },
+  {
+    name: 'HR Specialist',
+    code: 'HRS',
+    level: 'Mid',
+    department: 'Human Resources',
+  },
+  {
+    name: 'HR Manager',
+    code: 'HRM',
+    level: 'Senior',
+    department: 'Human Resources',
+  },
+  {
+    name: 'Financial Analyst',
+    code: 'FA',
+    level: 'Mid',
+    department: 'Finance',
+  },
+  {
+    name: 'Finance Manager',
+    code: 'FM',
+    level: 'Senior',
+    department: 'Finance',
+  },
+  {
+    name: 'Marketing Coordinator',
+    code: 'MC',
+    level: 'Junior',
+    department: 'Marketing',
+  },
+  {
+    name: 'Marketing Manager',
+    code: 'MM',
+    level: 'Senior',
+    department: 'Marketing',
+  },
+  {
+    name: 'Sales Representative',
+    code: 'SR',
+    level: 'Junior',
+    department: 'Sales',
+  },
+  {
+    name: 'Operations Manager',
+    code: 'OM',
+    level: 'Senior',
+    department: 'Operations',
+  },
 ];
 
 // ============================================
@@ -191,6 +243,9 @@ function generateEmployee(index, options = {}) {
   const birthYear = randomNumber(85, 99); // 1985-2000
   const nationalId = `2${birthYear}${String(randomNumber(1, 12)).padStart(2, '0')}${String(randomNumber(1, 35)).padStart(2, '0')}${String(randomNumber(10000, 99999))}${randomNumber(0, 9)}`;
 
+  const city = randomElement(EGYPTIAN_DATA.cities);
+  const streetAddress = `${randomNumber(1, 999)} ${randomElement(EGYPTIAN_DATA.streets)}`;
+
   const employee = {
     // Core Identity
     employeeNumber: `EMP-${String(index + 1).padStart(4, '0')}`,
@@ -205,10 +260,12 @@ function generateEmployee(index, options = {}) {
     mobilePhone: `+2010${randomNumber(10000000, 99999999)}`,
     homePhone: `+202${randomNumber(20000000, 29999999)}`,
 
-    // Address
-    city: randomElement(EGYPTIAN_DATA.cities),
-    streetAddress: `${randomNumber(1, 999)} ${randomElement(EGYPTIAN_DATA.streets)}`,
-    country: 'Egypt',
+    // Address - must be an object according to schema
+    address: {
+      city,
+      streetAddress,
+      country: 'Egypt',
+    },
 
     // Demographics
     dateOfBirth: new Date(1985 + (index % 15), index % 12, (index % 28) + 1),
@@ -222,8 +279,10 @@ function generateEmployee(index, options = {}) {
       new Date('2023-12-31'),
     ),
     contractEndDate: null,
-    contractType: randomElement(['PERMANENT', 'TEMPORARY', 'CONTRACT']),
-    workType: index % 5 === 0 ? 'REMOTE' : 'FULL_TIME',
+    // Fixed: Use correct enum values
+    contractType: randomElement(['FULL_TIME_CONTRACT', 'PART_TIME_CONTRACT']),
+    // Fixed: Use correct enum values (FULL_TIME or PART_TIME, not REMOTE)
+    workType: randomElement(['FULL_TIME', 'PART_TIME']),
     status: index >= 18 ? 'INACTIVE' : 'ACTIVE', // Last 2 inactive
     statusEffectiveFrom: new Date(),
 
@@ -365,11 +424,14 @@ async function seed() {
     // 1. DEPARTMENTS
     // ============================================
     console.log('🏢 Creating departments...');
+    const now = new Date();
     const departmentDocs = DEPARTMENTS.map((dept) => ({
       name: dept.name,
       code: dept.code,
       description: `${dept.name} Department`,
-      isActive: true,
+      active: true, // Fixed: use 'active' not 'isActive'
+      startDate: now, // Fixed: add startDate
+      endDate: null, // Fixed: add endDate
       createdAt: new Date(),
       updatedAt: new Date(),
     }));
@@ -388,11 +450,13 @@ async function seed() {
       const deptId = departmentIds[DEPARTMENTS.indexOf(dept)];
 
       return {
-        title: pos.title,
-        level: pos.level,
+        name: pos.name, // Fixed: use 'name' not 'title'
+        code: pos.code, // Fixed: add required 'code' field
+        description: `${pos.name} position in ${pos.department}`,
         departmentId: deptId,
-        description: `${pos.title} position in ${pos.department}`,
-        isActive: true,
+        active: true, // Fixed: use 'active' not 'isActive'
+        startDate: now, // Fixed: add startDate
+        endDate: null, // Fixed: add endDate
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -409,7 +473,7 @@ async function seed() {
       {
         name: 'Housing Allowance',
         amount: 2000,
-        taxable: true,
+        // Fixed: remove 'taxable' field (not in schema)
         status: 'approved',
         approvedAt: new Date(),
         createdAt: new Date(),
@@ -418,7 +482,6 @@ async function seed() {
       {
         name: 'Transport Allowance',
         amount: 1000,
-        taxable: true,
         status: 'approved',
         approvedAt: new Date(),
         createdAt: new Date(),
@@ -427,7 +490,6 @@ async function seed() {
       {
         name: 'Food Allowance',
         amount: 800,
-        taxable: false,
         status: 'approved',
         approvedAt: new Date(),
         createdAt: new Date(),
@@ -436,7 +498,6 @@ async function seed() {
       {
         name: 'Communication Allowance',
         amount: 500,
-        taxable: false,
         status: 'approved',
         approvedAt: new Date(),
         createdAt: new Date(),
@@ -514,7 +575,7 @@ async function seed() {
         positionName: 'Junior Software Engineer',
         amount: 5000,
         status: 'approved',
-        eligibilityCriteria: 'New hires in junior positions',
+        // Fixed: remove 'eligibilityCriteria' field (not in schema)
         approvedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -523,7 +584,6 @@ async function seed() {
         positionName: 'Software Engineer',
         amount: 8000,
         status: 'approved',
-        eligibilityCriteria: 'New hires in mid-level positions',
         approvedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -532,7 +592,6 @@ async function seed() {
         positionName: 'Senior Software Engineer',
         amount: 12000,
         status: 'approved',
-        eligibilityCriteria: 'New hires in senior positions',
         approvedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -615,12 +674,11 @@ async function seed() {
           {
             reason: 'Late arrival',
             amount: randomNumber(100, 300),
-            date: randomDate(new Date('2024-12-01'), new Date('2024-12-15')),
+            // Fixed: remove 'date' field (not in penalty schema)
           },
           {
             reason: 'Unauthorized absence',
             amount: randomNumber(200, 500),
-            date: randomDate(new Date('2024-12-01'), new Date('2024-12-15')),
           },
         ],
         createdAt: new Date(),
@@ -641,8 +699,6 @@ async function seed() {
 
     const runId = `PR-2024-${randomNumber(1000, 9999)}`;
     const totalNetPay = employees.reduce((sum, emp) => {
-      const grade =
-        payGrades.insertedIds[Object.keys(payGrades.insertedIds)[0]];
       return sum + 15000; // Simplified
     }, 0);
 
@@ -657,7 +713,7 @@ async function seed() {
     const payrollRun = {
       runId,
       payrollPeriod: new Date(2024, 11, 31), // December 2024
-      status: 'DRAFT',
+      status: 'draft', // Fixed: use lowercase 'draft' not 'DRAFT'
       entity: 'Acme Corporation Egypt',
       employees: employees.length,
       exceptions: employeeExceptions.length,
@@ -668,7 +724,10 @@ async function seed() {
       updatedAt: new Date(),
     };
 
-    await db.collection('payrollruns').insertOne(payrollRun);
+    const payrollRunResult = await db
+      .collection('payrollruns')
+      .insertOne(payrollRun);
+    const payrollRunId = payrollRunResult.insertedId;
     console.log(`✅ 1 payroll run created (${runId})`);
     console.log(
       `   • ${employeeExceptions.length} employees with exceptions\n`,
@@ -691,7 +750,7 @@ async function seed() {
 
       payrollDetails.push({
         employeeId: employeeIds[i],
-        payrollRunId: payrollRun._id,
+        payrollRunId: payrollRunId, // Fixed: use the inserted ID
         baseSalary,
         allowances,
         deductions,
@@ -738,7 +797,7 @@ async function seed() {
     );
     console.log(`   • ${penaltyResult.insertedCount} Employee Penalties`);
     console.log(`   • 1 Payroll Run (${runId})`);
-    console.log(`     - Status: DRAFT`);
+    console.log(`     - Status: draft`);
     console.log(
       `     - ${employeeExceptions.length} employees with exceptions`,
     );

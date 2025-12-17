@@ -7,7 +7,6 @@ import {
   DollarSign, 
   AlertTriangle, 
   Send,
-  Download,
   Eye,
   Check,
   X,
@@ -15,32 +14,17 @@ import {
   Lock,
   Unlock,
   Clock,
-  XCircle
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  CheckSquare
 } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 const API_URL = "http://localhost:3000";
-// [
-//   {
-//     _id: ObjectId('6940380702779cf63544e8fe'),
-//     employeeNumber: 'EMP-0001',
-//     fullName: 'Mohamed Shaker',
-//     systemRole: 'Payroll Manager'
-//   },
-//   {
-//     _id: ObjectId('6940380702779cf63544e8ff'),
-//     employeeNumber: 'EMP-0002',
-//     fullName: 'Fatima Khalil',
-//     systemRole: 'Finance Staff'
-//   },
-//   {
-//     _id: ObjectId('6940380702779cf63544e900'),
-//     employeeNumber: 'EMP-0003',
-//     fullName: 'Hossam Youssef',
-//     systemRole: 'Payroll Specialist'
-//   }
-// ]
-const RoleSwitcher = ({ currentRole, onRoleChange }) => {
+
+const RoleSwitcher = ({ currentRole, onRoleChange }: { currentRole: string; onRoleChange: (role: string) => void }) => {
   return (
     <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 border-2 border-blue-500 z-50">
       <p className="text-xs font-semibold text-gray-700 mb-2">🧪 Test Role</p>
@@ -57,18 +41,86 @@ const RoleSwitcher = ({ currentRole, onRoleChange }) => {
   );
 };
 
+interface Employee {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  primaryDepartmentId?: { name?: string };
+  department?: string;
+}
+
+interface EmployeePayrollDetail {
+  _id: string;
+  employeeId: Employee;
+  baseSalary: number;
+  allowances: number;
+  deductions: number;
+  netPay: number;
+  bonus?: number;
+  benefit?: number;
+  bankStatus: string;
+  exceptions?: string;
+}
+
+interface PayrollRun {
+  _id: string;
+  runId: string;
+  payrollPeriod: string;
+  status: string;
+  entity: string;
+  employees: number;
+  exceptions: number;
+  totalnetpay: number;
+  paymentStatus: string;
+  rejectionReason?: string;
+  payrollSpecialistId?: Employee;
+}
+
+interface PreRunItem {
+  _id: string;
+  employeeId?: Employee;
+  type: string;
+  status: string;
+  givenAmount?: number;
+  paymentDate?: string;
+  benefitType?: string;
+}
+
+interface ApprovalHistoryItem {
+  _id: string;
+  action: string;
+  performedBy: string;
+  timestamp: string;
+  reason?: string;
+}
+
 const RunDetailsPage = () => {
   const [role, setRole] = useState('PAYROLL_SPECIALIST');
-  const params = useParams()
-  const [runId] = useState(params.id); 
-  const [run, setRun] = useState(null);
-  const [employees, setEmployees] = useState([]);
-  const [preRunItems, setPreRunItems] = useState([]);
-  const [approvalHistory, setApprovalHistory] = useState([]);
+  const params = useParams();
+  const router = useRouter();
+  const [runId] = useState(params.id as string); 
+  const [run, setRun] = useState<PayrollRun | null>(null);
+  const [employees, setEmployees] = useState<EmployeePayrollDetail[]>([]);
+  const [preRunItems, setPreRunItems] = useState<PreRunItem[]>([]);
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('payroll');
   
+  // Expanded rows for detailed view
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  
+  // Exception resolution state (for Manager)
+  const [resolvingException, setResolvingException] = useState<string | null>(null);
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [isResolving, setIsResolving] = useState(false);
+  
+  // Track which employees have resolved exceptions (local state)
+  const [resolvedEmployees, setResolvedEmployees] = useState<Set<string>>(new Set());
+  
+  // Modal states
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [showUnfreezeModal, setShowUnfreezeModal] = useState(false);
@@ -83,38 +135,44 @@ const RunDetailsPage = () => {
     }
   }, [runId]);
 
+  // Redirect to draft page if status is DRAFT
+  useEffect(() => {
+    if (run?.status && (run.status === 'DRAFT' || run.status === 'draft')) {
+      router.push(`/runs/${runId}/draft`);
+    }
+  }, [run?.status, runId, router]);
+
   const fetchRunDetails = async () => {
     try {
       setLoading(true);
       setError('');
       
-      // Correct endpoint: GET /payroll-execution/payroll-runs/:id
       const runResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}`);
       if (!runResponse.ok) throw new Error('Failed to fetch payroll run');
       
       const runData = await runResponse.json();
       setRun(runData);
       
-      // Correct endpoint: GET /payroll-execution/payroll-runs/:runId/review/draft
       const draftResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/review/draft`);
       if (draftResponse.ok) {
         const draftData = await draftResponse.json();
         if (draftData.employees && Array.isArray(draftData.employees)) {
           setEmployees(draftData.employees);
+          // Reset resolved employees when data is refreshed
+          setResolvedEmployees(new Set());
         }
       }
 
-      // Correct endpoints for pre-run items
       const [bonusesRes, benefitsRes] = await Promise.all([
         fetch(`${API_URL}/payroll-execution/signing-bonuses/pending`),
         fetch(`${API_URL}/payroll-execution/benefits/pending`)
       ]);
 
-      let allPreRunItems = [];
+      let allPreRunItems: PreRunItem[] = [];
       
       if (bonusesRes.ok) {
         const bonuses = await bonusesRes.json();
-        allPreRunItems = [...allPreRunItems, ...bonuses.map((b) => ({
+        allPreRunItems = [...allPreRunItems, ...bonuses.map((b: PreRunItem) => ({
           ...b,
           type: 'Signing Bonus'
         }))];
@@ -122,7 +180,7 @@ const RunDetailsPage = () => {
       
       if (benefitsRes.ok) {
         const benefits = await benefitsRes.json();
-        allPreRunItems = [...allPreRunItems, ...benefits.map((b) => ({
+        allPreRunItems = [...allPreRunItems, ...benefits.map((b: PreRunItem) => ({
           ...b,
           type: b.benefitType || 'Benefit'
         }))];
@@ -130,8 +188,8 @@ const RunDetailsPage = () => {
 
       setPreRunItems(allPreRunItems);
       
-    } catch (error) {
-      setError(error.message || 'Failed to load run details');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load run details');
     } finally {
       setLoading(false);
     }
@@ -139,7 +197,6 @@ const RunDetailsPage = () => {
 
   const fetchApprovalHistory = async () => {
     try {
-      // Correct endpoint: GET /payroll-execution/payroll-runs/:runId/approvals
       const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/approvals`);
       if (response.ok) {
         const data = await response.json();
@@ -147,17 +204,110 @@ const RunDetailsPage = () => {
       } else {
         setApprovalHistory([]);
       }
-    } catch (error) {
-      console.error('Failed to fetch approval history:', error);
+    } catch (err) {
+      console.error('Failed to fetch approval history:', err);
       setApprovalHistory([]);
     }
   };
+
+  // ============ EXCEPTION RESOLUTION (Manager) ============
+  
+  const handleResolveException = async (employeePayrollDetailId: string, employeeProfileId: string) => {
+    if (!resolutionNote.trim()) {
+      alert('Please provide a resolution note');
+      return;
+    }
+    
+    try {
+      setIsResolving(true);
+      
+      // Log for debugging
+      console.log('Resolving exception:', {
+        runId,
+        employeePayrollDetailId,
+        employeeProfileId,
+        resolutionNote
+      });
+      
+      // Try with employeeProfileId first (this is what the backend likely expects)
+      const response = await fetch(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions/${employeeProfileId}/resolve`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolutionNote })
+        }
+      );
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        
+        let errorMessage = 'Failed to resolve exception';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+      
+      const result = await response.json();
+      console.log('Resolve result:', result);
+      
+      // Update local state to hide the resolve button
+      setResolvedEmployees(prev => new Set([...prev, employeePayrollDetailId]));
+      
+      // Also update the employees array to remove the exception
+      setEmployees(prev => prev.map(emp => {
+        if (emp._id === employeePayrollDetailId) {
+          return { ...emp, exceptions: undefined };
+        }
+        return emp;
+      }));
+      
+      // Close the expanded row and reset form
+      setExpandedRows(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(employeePayrollDetailId);
+        return newSet;
+      });
+      setResolvingException(null);
+      setResolutionNote('');
+      
+      alert('Exception resolved successfully!');
+      
+    } catch (err) {
+      console.error('Failed to resolve exception:', err);
+      alert(err instanceof Error ? err.message : 'Failed to resolve exception');
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
+  // ============ ROW EXPANSION ============
+  
+  const toggleRowExpansion = (id: string) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // ============ PUBLISH / APPROVE / REJECT HANDLERS ============
 
   const handlePublish = async () => {
     if (!confirm('Send this payroll for manager approval?')) return;
     
     try {
-      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/publish
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/publish`,
         { method: 'PATCH' }
@@ -168,12 +318,20 @@ const RunDetailsPage = () => {
       alert('Payroll sent to Manager for review!');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error) {
-      alert(error.message || 'Failed to publish payroll');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to publish payroll');
     }
   };
 
   const handleManagerApprove = async () => {
+    const unresolvedExceptions = employees.filter(e => e.exceptions && !resolvedEmployees.has(e._id)).length;
+    
+    if (unresolvedExceptions > 0) {
+      if (!confirm(`There are ${unresolvedExceptions} unresolved exceptions. Are you sure you want to approve?`)) {
+        return;
+      }
+    }
+    
     if (!confirm('Approve this payroll? It will be sent to Finance for final review.')) return;
     
     try {
@@ -192,19 +350,18 @@ const RunDetailsPage = () => {
         try {
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch (e) {
+        } catch {
           errorMessage = errorText || errorMessage;
         }
-        console.error('Server response:', errorText);
         throw new Error(errorMessage);
       }
       
       alert('Approved! Sent to Finance for final approval.');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error) {
-      console.error('Approve error:', error);
-      alert(`Error: ${error.message}`);
+    } catch (err) {
+      console.error('Approve error:', err);
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -215,7 +372,6 @@ const RunDetailsPage = () => {
     }
     
     try {
-      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/manager-reject
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/manager-reject`,
         {
@@ -223,7 +379,7 @@ const RunDetailsPage = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             reason: rejectionReason,
-            approverId:"6940380702779cf63544e8fe"
+            approverId: "6940380702779cf63544e8fe"
           })
         }
       );
@@ -238,9 +394,9 @@ const RunDetailsPage = () => {
       setRejectionReason('');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error) {
-      console.error('Reject error:', error);
-      alert(error.message || 'Failed to reject');
+    } catch (err) {
+      console.error('Reject error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to reject');
     }
   };
 
@@ -248,7 +404,6 @@ const RunDetailsPage = () => {
     if (!confirm('Approve this payroll for finalization?')) return;
     
     try {
-      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/finance-approve
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-approve`,
         { 
@@ -266,9 +421,9 @@ const RunDetailsPage = () => {
       alert('Approved! Payroll Manager can now freeze it.');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error) {
-      console.error('Finance approve error:', error);
-      alert(error.message || 'Failed to approve');
+    } catch (err) {
+      console.error('Finance approve error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to approve');
     }
   };
 
@@ -279,7 +434,6 @@ const RunDetailsPage = () => {
     }
     
     try {
-      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/finance-reject
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-reject`,
         {
@@ -302,9 +456,9 @@ const RunDetailsPage = () => {
       setRejectionReason('');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error) {
-      console.error('Finance reject error:', error);
-      alert(error.message || 'Failed to reject');
+    } catch (err) {
+      console.error('Finance reject error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to reject');
     }
   };
 
@@ -312,7 +466,6 @@ const RunDetailsPage = () => {
     if (!confirm('Freeze this payroll? No further changes will be allowed.')) return;
     
     try {
-      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/freeze
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/freeze`,
         { 
@@ -324,11 +477,11 @@ const RunDetailsPage = () => {
       
       if (!response.ok) throw new Error('Failed to freeze');
       
-      alert('Payroll frozen! Status: PAID');
+      alert('Payroll frozen! Status: LOCKED');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error) {
-      alert(error.message || 'Failed to freeze payroll');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to freeze payroll');
     }
   };
 
@@ -339,7 +492,6 @@ const RunDetailsPage = () => {
     }
     
     try {
-      // Correct endpoint: PATCH /payroll-execution/payroll-runs/:runId/unfreeze
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/unfreeze`,
         {
@@ -356,12 +508,12 @@ const RunDetailsPage = () => {
       setUnfreezeReason('');
       fetchRunDetails();
       fetchApprovalHistory();
-    } catch (error) {
-      alert(error.message || 'Failed to unfreeze payroll');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to unfreeze payroll');
     }
   };
 
-  const handleApprovePreRunItem = async (itemId, itemType) => {
+  const handleApprovePreRunItem = async (itemId: string, itemType: string) => {
     try {
       const endpoint = itemType === 'Signing Bonus' 
         ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/approve`
@@ -373,12 +525,12 @@ const RunDetailsPage = () => {
       
       alert('Item approved successfully!');
       fetchRunDetails();
-    } catch (error) {
-      alert(error.message || 'Failed to approve item');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to approve item');
     }
   };
 
-  const handleRejectPreRunItem = async (itemId, itemType) => {
+  const handleRejectPreRunItem = async (itemId: string, itemType: string) => {
     try {
       const endpoint = itemType === 'Signing Bonus' 
         ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/reject`
@@ -390,10 +542,12 @@ const RunDetailsPage = () => {
       
       alert('Item rejected successfully!');
       fetchRunDetails();
-    } catch (error) {
-      alert(error.message || 'Failed to reject item');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to reject item');
     }
   };
+
+  // ============ UI HELPERS ============
 
   const ActionButtons = () => {
     if (!run) return null;
@@ -466,7 +620,7 @@ const RunDetailsPage = () => {
       );
     }
 
-    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'PAID') {
+    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'LOCKED') {
       return (
         <button
           onClick={() => setShowUnfreezeModal(true)}
@@ -481,24 +635,40 @@ const RunDetailsPage = () => {
     return null;
   };
 
-  const getBankStatus = (employee) => {
-    if (!employee.employeeId?.bankAccountDetails) return 'missing';
-    const bank = employee.employeeId.bankAccountDetails;
-    if (!bank.accountNumber || !bank.bankName) return 'invalid';
-    return 'valid';
-  };
-
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     const normalizedStatus = status.toUpperCase().replace(/\s+/g, '_');
-    const colors = {
+    const colors: Record<string, string> = {
       'DRAFT': 'bg-gray-200 text-gray-800',
       'UNDER_REVIEW': 'bg-yellow-200 text-yellow-800',
-      'WAITING_FINANCE_APPROVAL': 'bg-blue-200 text-blue-800',
+      'PENDING_FINANCE_APPROVAL': 'bg-blue-200 text-blue-800',
       'APPROVED': 'bg-green-200 text-green-800',
+      'LOCKED': 'bg-purple-200 text-purple-800',
       'PAID': 'bg-purple-200 text-purple-800',
       'REJECTED': 'bg-red-200 text-red-800'
     };
     return colors[normalizedStatus] || 'bg-gray-200 text-gray-800';
+  };
+
+  const getBankStatusColor = (status: string) => {
+    switch (status) {
+      case 'valid':
+        return 'bg-green-200 text-green-800';
+      case 'missing':
+        return 'bg-yellow-200 text-yellow-800';
+      case 'invalid':
+        return 'bg-red-200 text-red-800';
+      default:
+        return 'bg-gray-200 text-gray-800';
+    }
+  };
+
+  // Check if current role can resolve exceptions
+  const canResolveExceptions = role === 'PAYROLL_MANAGER' && 
+    run?.status?.toUpperCase().replace(/\s+/g, '_') === 'UNDER_REVIEW';
+
+  // Check if employee has unresolved exception
+  const hasUnresolvedException = (emp: EmployeePayrollDetail) => {
+    return !!emp.exceptions && !resolvedEmployees.has(emp._id);
   };
 
   if (loading) {
@@ -534,6 +704,7 @@ const RunDetailsPage = () => {
   );
   const totalDeductions = employees.reduce((sum, emp) => sum + emp.deductions, 0);
   const totalNet = employees.reduce((sum, emp) => sum + emp.netPay, 0);
+  const exceptionsCount = employees.filter(e => hasUnresolvedException(e)).length;
 
   const normalizedStatus = run.status.toUpperCase().replace(/\s+/g, '_');
 
@@ -542,6 +713,7 @@ const RunDetailsPage = () => {
       <RoleSwitcher currentRole={role} onRoleChange={setRole} />
       
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Role Info Banner */}
         <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -553,21 +725,22 @@ const RunDetailsPage = () => {
             <span className="text-xs text-blue-700">
               Status: {run.status} | 
               {role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT' && ' ✅ Can publish'}
-              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW' && ' ✅ Can approve/reject'}
+              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW' && ' ✅ Can approve/reject & resolve exceptions'}
               {role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL' && ' ✅ Can approve/reject'}
               {role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED' && ' ✅ Can freeze'}
-              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'PAID' && ' ✅ Can unfreeze'}
+              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'LOCKED' && ' ✅ Can unfreeze'}
               {!(
                 (role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT') ||
                 (role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW') ||
                 (role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL') ||
                 (role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED') ||
-                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'PAID')
-              ) && ' ⚠️ No actions available'}
+                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'LOCKED')
+              ) && ' ⚠️ View only'}
             </span>
           </div>
         </div>
 
+        {/* Header */}
         <div>
           <button
             onClick={() => window.history.back()}
@@ -580,7 +753,7 @@ const RunDetailsPage = () => {
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-3xl font-bold text-gray-800">
-                Payroll Preview - {new Date(run.payrollPeriod).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+                Payroll Review - {new Date(run.payrollPeriod).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
               </h1>
               <div className="flex items-center gap-3 mt-2">
                 <p className="text-gray-600">{run.entity}</p>
@@ -596,11 +769,13 @@ const RunDetailsPage = () => {
           </div>
         </div>
 
+        {/* Status-specific alerts */}
         {normalizedStatus === 'UNDER_REVIEW' && role === 'PAYROLL_MANAGER' && (
           <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
             <p className="font-semibold text-yellow-900">⚠️ Manager Action Required</p>
             <p className="text-sm text-yellow-700">
-              This payroll is waiting for your approval.
+              This payroll is waiting for your approval. 
+              {exceptionsCount > 0 && ` There are ${exceptionsCount} exception(s) that need your attention.`}
             </p>
           </div>
         )}
@@ -609,7 +784,7 @@ const RunDetailsPage = () => {
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
             <p className="font-semibold text-blue-900">💼 Finance Action Required</p>
             <p className="text-sm text-blue-700">
-              This payroll has been approved by the Manager.
+              This payroll has been approved by the Manager and is ready for your final approval.
             </p>
           </div>
         )}
@@ -618,7 +793,7 @@ const RunDetailsPage = () => {
           <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
             <p className="font-semibold text-green-900">✅ Ready to Freeze</p>
             <p className="text-sm text-green-700">
-              Finance has approved this payroll.
+              Finance has approved this payroll. You can now freeze it to finalize.
             </p>
           </div>
         )}
@@ -635,6 +810,25 @@ const RunDetailsPage = () => {
           </div>
         )}
 
+        {/* Exception Alert for Manager */}
+        {canResolveExceptions && exceptionsCount > 0 && (
+          <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="text-orange-600 flex-shrink-0 mt-0.5" size={20} />
+              <div>
+                <p className="font-semibold text-orange-900">
+                  {exceptionsCount} Exception{exceptionsCount !== 1 ? 's' : ''} Require Your Attention
+                </p>
+                <p className="text-sm text-orange-700">
+                  As a Payroll Manager, you can resolve these exceptions before approving. 
+                  Click on an employee row to view details and resolve.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-2">
@@ -683,12 +877,11 @@ const RunDetailsPage = () => {
                 <AlertTriangle size={20} className="text-orange-600" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-gray-900">
-              {employees.filter(e => e.exceptions).length}
-            </p>
+            <p className="text-2xl font-bold text-orange-600">{exceptionsCount}</p>
           </div>
         </div>
 
+        {/* Tabs */}
         <div className="bg-white rounded-lg shadow-md">
           <div className="border-b border-gray-200">
             <div className="flex">
@@ -701,6 +894,11 @@ const RunDetailsPage = () => {
                 }`}
               >
                 Employee Payroll ({employees.length})
+                {exceptionsCount > 0 && (
+                  <span className="ml-2 px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full">
+                    {exceptionsCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('preruns')}
@@ -725,18 +923,28 @@ const RunDetailsPage = () => {
             </div>
           </div>
 
+          {/* Employee Payroll Tab */}
           {activeTab === 'payroll' && (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Flags</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Base Salary</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Allowances</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deductions</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Pay</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bank Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Exceptions</th>
+                    {canResolveExceptions && (
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {employees.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={canResolveExceptions ? 8 : 7} className="px-6 py-12 text-center text-gray-500">
                         <AlertCircle size={48} className="mx-auto text-gray-400 mb-4" />
                         <p className="text-lg font-medium">No employee data available</p>
                       </td>
@@ -744,50 +952,158 @@ const RunDetailsPage = () => {
                   ) : (
                     employees.map((emp) => {
                       const employee = emp.employeeId;
-                      const bankStatus = getBankStatus(emp);
+                      const bankStatus = emp.bankStatus || 'missing';
+                      const empPayrollDetailId = emp._id; // The employeePayrollDetails document ID
+                      const empProfileId = employee?._id; // The employee profile ID
+                      const isExpanded = expandedRows.has(empPayrollDetailId);
+                      const hasException = hasUnresolvedException(emp);
+                      const isResolved = resolvedEmployees.has(empPayrollDetailId);
                       
                       return (
-                        <tr key={emp._id} className="hover:bg-gray-50 transition">
-                          <td className="px-6 py-4">
-                            <div className="font-medium text-gray-900">
-                              {employee?.firstName} {employee?.lastName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {employee?.department || 'Unknown'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            USD {(emp.baseSalary || 0).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            USD {(emp.allowances || 0).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            USD {(emp.deductions || 0).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-bold text-gray-900">
-                            USD {(emp.netPay || 0).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              bankStatus === 'valid' ? 'bg-green-200 text-green-800' :
-                              bankStatus === 'missing' ? 'bg-yellow-200 text-yellow-800' :
-                              'bg-red-200 text-red-800'
-                            }`}>
-                              {bankStatus}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            {emp.exceptions ? (
-                              <div className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs max-w-xs">
-                                <AlertTriangle size={12} className="flex-shrink-0" />
-                                <span className="truncate">{emp.exceptions}</span>
+                        <React.Fragment key={emp._id}>
+                          <tr 
+                            className={`hover:bg-gray-50 transition ${hasException ? 'bg-orange-50' : isResolved ? 'bg-green-50' : ''}`}
+                            onClick={() => (hasException && canResolveExceptions) ? toggleRowExpansion(empPayrollDetailId) : undefined}
+                            style={{ cursor: (hasException && canResolveExceptions) ? 'pointer' : 'default' }}
+                          >
+                            <td className="px-6 py-4">
+                              <div className="font-medium text-gray-900">
+                                {employee?.firstName || ''} {employee?.lastName || ''}
                               </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
+                              <div className="text-sm text-gray-500">
+                                {employee?.primaryDepartmentId?.name || employee?.department || 'Unknown'}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              USD {(emp.baseSalary || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              USD {(emp.allowances || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              USD {(emp.deductions || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-bold text-gray-900">
+                              USD {(emp.netPay || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getBankStatusColor(bankStatus)}`}>
+                                {bankStatus}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              {isResolved ? (
+                                <span className="text-green-600 flex items-center gap-1">
+                                  <CheckCircle size={14} />
+                                  Resolved
+                                </span>
+                              ) : emp.exceptions ? (
+                                <div className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs max-w-xs">
+                                  <AlertTriangle size={12} className="flex-shrink-0" />
+                                  <span className="truncate">{emp.exceptions}</span>
+                                </div>
+                              ) : (
+                                <span className="text-green-600 flex items-center gap-1">
+                                  <CheckCircle size={14} />
+                                  OK
+                                </span>
+                              )}
+                            </td>
+                            {canResolveExceptions && (
+                              <td className="px-6 py-4 text-center">
+                                {hasException && !isResolved && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleRowExpansion(empPayrollDetailId);
+                                    }}
+                                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1 mx-auto text-sm font-medium"
+                                  >
+                                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    {isExpanded ? 'Hide' : 'Resolve'}
+                                  </button>
+                                )}
+                                {isResolved && (
+                                  <span className="text-green-600 text-sm">✓ Done</span>
+                                )}
+                              </td>
                             )}
-                          </td>
-                        </tr>
+                          </tr>
+                          
+                          {/* Expanded Exception Resolution Row */}
+                          {isExpanded && hasException && canResolveExceptions && !isResolved && (
+                            <tr className="bg-orange-50">
+                              <td colSpan={8} className="px-6 py-4">
+                                <div className="bg-white rounded-lg p-4 border-2 border-orange-300 max-w-2xl">
+                                  <h4 className="font-bold text-orange-900 mb-3 flex items-center gap-2">
+                                    <AlertTriangle size={18} />
+                                    Exception Details for {employee?.firstName} {employee?.lastName}
+                                  </h4>
+                                  
+                                  <div className="bg-orange-100 p-3 rounded mb-4">
+                                    <p className="text-sm text-orange-800 font-medium">
+                                      {emp.exceptions}
+                                    </p>
+                                  </div>
+
+                                  {/* Debug info - remove in production */}
+                                  <div className="bg-gray-100 p-2 rounded mb-4 text-xs text-gray-600">
+                                    <p>Debug: PayrollDetail ID: {empPayrollDetailId}</p>
+                                    <p>Debug: Employee Profile ID: {empProfileId}</p>
+                                  </div>
+                                  
+                                  {resolvingException === empPayrollDetailId ? (
+                                    <div className="space-y-3">
+                                      <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                          <MessageSquare size={14} className="inline mr-1" />
+                                          Resolution Note
+                                        </label>
+                                        <textarea
+                                          value={resolutionNote}
+                                          onChange={(e) => setResolutionNote(e.target.value)}
+                                          placeholder="Explain how this exception was resolved..."
+                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                          rows={3}
+                                        />
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => handleResolveException(empPayrollDetailId, empProfileId || empPayrollDetailId)}
+                                          disabled={isResolving}
+                                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold flex items-center gap-2"
+                                        >
+                                          <CheckSquare size={16} />
+                                          {isResolving ? 'Resolving...' : 'Mark as Resolved'}
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setResolvingException(null);
+                                            setResolutionNote('');
+                                          }}
+                                          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setResolvingException(empPayrollDetailId);
+                                      }}
+                                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold flex items-center gap-2"
+                                    >
+                                      <CheckSquare size={16} />
+                                      Resolve This Exception
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -796,6 +1112,7 @@ const RunDetailsPage = () => {
             </div>
           )}
 
+          {/* Pre-Run Items Tab */}
           {activeTab === 'preruns' && (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -822,7 +1139,7 @@ const RunDetailsPage = () => {
                       <tr key={item._id} className="hover:bg-gray-50 transition">
                         <td className="px-6 py-4">
                           <div className="font-medium text-gray-900">
-                            {item.employeeId?.firstName} {item.employeeId?.lastName}
+                            {item.employeeId?.firstName || ''} {item.employeeId?.lastName || ''}
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -878,6 +1195,7 @@ const RunDetailsPage = () => {
             </div>
           )}
 
+          {/* Approval History Tab */}
           {activeTab === 'history' && (
             <div className="p-6">
               {!Array.isArray(approvalHistory) || approvalHistory.length === 0 ? (
@@ -919,6 +1237,7 @@ const RunDetailsPage = () => {
           )}
         </div>
 
+        {/* Reject Modal */}
         {showRejectModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -954,6 +1273,7 @@ const RunDetailsPage = () => {
           </div>
         )}
 
+        {/* Unfreeze Modal */}
         {showUnfreezeModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
