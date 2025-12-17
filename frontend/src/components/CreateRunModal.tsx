@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { X, Calendar, Building2, User, Loader2, AlertCircle } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 const CreateRunModal = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({

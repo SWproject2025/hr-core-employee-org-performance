@@ -1,3 +1,6 @@
+// FINAL PRODUCTION VERSION - calc-draft.service.ts
+// Copy this to replace your current service file
+
 import { Injectable } from '@nestjs/common';
 import { CreateCalcDraftDto } from './dto/create-calc-draft.dto';
 import { UpdateCalcDraftDto } from './dto/update-calc-draft.dto';
@@ -7,14 +10,13 @@ import { employeePenalties, employeePenaltiesDocument } from '../models/employee
 import { paySlip, PayslipDocument } from '../models/payslip.schema';
 import { employeeSigningBonus, employeeSigningBonusDocument } from '../models/EmployeeSigningBonus.schema';
 import { EmployeeTerminationResignation, EmployeeTerminationResignationDocument } from '../models/EmployeeTerminationResignation.schema';
-import { InjectModel } from '@nestjs/mongoose';
-import mongoose, { Model } from 'mongoose';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import mongoose, { Model, Connection } from 'mongoose';
 import { PayRollStatus, PayRollPaymentStatus, BankStatus, BonusStatus, BenefitStatus, PaySlipPaymentStatus } from '../enums/payroll-execution-enum';
 
 @Injectable()
 export class CalcDraftService {
   constructor(
-    // ✅ FIXED: Use proper model names instead of strings
     @InjectModel(employeeSigningBonus.name) 
     private employeeSigningBonusModel: Model<employeeSigningBonus>,
     
@@ -32,6 +34,12 @@ export class CalcDraftService {
     
     @InjectModel(EmployeeTerminationResignation.name) 
     private employeeTerminationResignationModel: Model<EmployeeTerminationResignation>,
+    
+    @InjectModel('payGrade')
+    private payGradeModel: Model<any>,
+    
+    @InjectConnection() 
+    private connection: Connection,
   ) {}
 
   async createPayrollRun(createCalcDraftDto: CreateCalcDraftDto): Promise<payrollRuns> {
@@ -54,10 +62,12 @@ export class CalcDraftService {
     const payrollDetails: employeePayrollDetails[] = [];
 
     for(const employee of employeeData){
+      const baseSalary = await this.getEmployeeBaseSalary(employee);
+      
       const payrollDetail = await this.employeePayrollDetailsModel.create({
         payrollRunId,
         employeeId: employee._id,
-        baseSalary: employee.baseSalary || 0,
+        baseSalary: baseSalary,
         allowances: 0,
         deductions: 0,
         netSalary: 0,
@@ -71,11 +81,111 @@ export class CalcDraftService {
     return payrollDetails;
   }
 
+  async getEmployeeBaseSalary(employee: any): Promise<number> {
+    // Method 1: Check if employee has baseSalary directly
+    if (employee.baseSalary && employee.baseSalary > 0) {
+      return employee.baseSalary;
+    }
+    
+    // Method 2: Check if payGrade is already populated
+    if (employee.payGradeId && typeof employee.payGradeId === 'object' && employee.payGradeId.baseSalary) {
+      return employee.payGradeId.baseSalary;
+    }
+    
+    // Method 3: Fetch from payGrade using model
+    if (employee.payGradeId && this.payGradeModel) {
+      try {
+        const payGrade = await this.payGradeModel.findById(employee.payGradeId);
+        if (payGrade && payGrade.baseSalary) {
+          return payGrade.baseSalary;
+        }
+      } catch (error) {
+        // Continue to fallback
+      }
+    }
+    
+    // Method 4: Fallback to direct MongoDB query
+    if (employee.payGradeId && this.connection) {
+      try {
+        const payGrade = await this.connection.collection('paygrade').findOne({ 
+          _id: employee.payGradeId 
+        });
+        if (payGrade && payGrade.baseSalary) {
+          return payGrade.baseSalary;
+        }
+      } catch (error) {
+        console.error('Failed to fetch payGrade:', error);
+      }
+    }
+    
+    return 0;
+  }
+
+  async getEmployeeAllowances(employee: any): Promise<{
+    housingAllowance: number;
+    transportationAllowance: number;
+    otherAllowances: number;
+  }> {
+    if (employee.housingAllowance || employee.transportationAllowance || employee.otherAllowances) {
+      return {
+        housingAllowance: employee.housingAllowance || 0,
+        transportationAllowance: employee.transportationAllowance || 0,
+        otherAllowances: employee.otherAllowances || 0,
+      };
+    }
+    
+    if (employee.payGradeId) {
+      let payGrade = employee.payGradeId;
+      
+      if (typeof payGrade === 'string' || payGrade instanceof mongoose.Types.ObjectId) {
+        try {
+          payGrade = await this.payGradeModel.findById(payGrade).populate('allowances');
+        } catch (error) {
+          payGrade = await this.connection.collection('paygrade').findOne({ _id: payGrade });
+        }
+      }
+      
+      if (payGrade && payGrade.allowances) {
+        const allowances = Array.isArray(payGrade.allowances) ? payGrade.allowances : [];
+        
+        let housingAllowance = 0;
+        let transportationAllowance = 0;
+        let otherAllowances = 0;
+        
+        for (const allowance of allowances) {
+          let allowanceData = allowance;
+          
+          if (typeof allowance === 'string' || allowance instanceof mongoose.Types.ObjectId) {
+            const allowanceId = typeof allowance === 'string' 
+              ? new mongoose.Types.ObjectId(allowance) 
+              : allowance;
+            allowanceData = await this.connection.collection('allowance').findOne({ _id: allowanceId });
+          }
+          
+          if (allowanceData) {
+            if (allowanceData.name?.toLowerCase().includes('housing')) {
+              housingAllowance = allowanceData.amount || 0;
+            } else if (allowanceData.name?.toLowerCase().includes('transport')) {
+              transportationAllowance = allowanceData.amount || 0;
+            } else {
+              otherAllowances += allowanceData.amount || 0;
+            }
+          }
+        }
+        
+        return { housingAllowance, transportationAllowance, otherAllowances };
+      }
+    }
+    
+    return { housingAllowance: 0, transportationAllowance: 0, otherAllowances: 0 };
+  }
+
   async calculateGrossSalary(employee: any): Promise<number> {
-    const baseSalary = employee.baseSalary || 0;
-    const housingAllowance = employee.housingAllowance || 0;
-    const transportationAllowance = employee.transportationAllowance || 0;
-    const otherAllowances = employee.otherAllowances || 0;
+    const baseSalary = await this.getEmployeeBaseSalary(employee);
+    const allowances = await this.getEmployeeAllowances(employee);
+    const housingAllowance = allowances.housingAllowance;
+    const transportationAllowance = allowances.transportationAllowance;
+    const otherAllowances = allowances.otherAllowances;
     
     const pendingBonuses = await this.employeeSigningBonusModel.find({
       employeeId: employee._id,
@@ -99,7 +209,6 @@ export class CalcDraftService {
                         terminationBenefit +
                         leaveCompensation;
     
-    // ✅ FIXED: Use firstName/lastName
     const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown';
     const employeeCode = employee.code || employee.employeeNumber || employee._id.toString();
     
@@ -143,7 +252,7 @@ export class CalcDraftService {
   }
 
   async applyInsuranceDeduction(employee: any): Promise<number> {
-    const baseSalary = employee.baseSalary || 0;
+    const baseSalary = await this.getEmployeeBaseSalary(employee);
     const maxInsuranceCap = 14700;
     const insuranceAmount = Math.min(baseSalary, maxInsuranceCap);
     const employeeInsurance = insuranceAmount * 0.115;
@@ -185,10 +294,8 @@ export class CalcDraftService {
       const insuranceDeduction = await this.applyInsuranceDeduction(employee);
       const penaltiesData = await this.applyPenalties(employee);
       
-      const housingAllowance = employee.housingAllowance || 0;
-      const transportationAllowance = employee.transportationAllowance || 0;
-      const otherAllowances = employee.otherAllowances || 0;
-      const allowances = housingAllowance + transportationAllowance + otherAllowances;
+      const allowancesData = await this.getEmployeeAllowances(employee);
+      const allowances = allowancesData.housingAllowance + allowancesData.transportationAllowance + allowancesData.otherAllowances;
       
       const pendingBonuses = await this.employeeSigningBonusModel.find({
         employeeId: employee._id,
@@ -204,7 +311,6 @@ export class CalcDraftService {
       
       const netSalary = grossSalary - taxDeduction - insuranceDeduction - penaltiesData.totalPenalties;
       
-      // ✅ FIXED: Use firstName/lastName instead of name
       const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown';
       
       if (netSalary < 0) {
@@ -222,7 +328,6 @@ export class CalcDraftService {
         benefit
       };
     } catch (error) {
-      // ✅ FIXED: Use firstName/lastName
       const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown';
       throw new Error(`Error calculating net salary for employee ${employeeName}: ${error.message}`);
     }
@@ -244,10 +349,7 @@ export class CalcDraftService {
   async flagAnomalies(payrollRunId: mongoose.Types.ObjectId, employee: any): Promise<string[]> {
     const exceptions: string[] = [];
     
-    // ✅ FIXED: Check nested bankAccountDetails object
-    if (!employee.bankAccountDetails || 
-        !employee.bankAccountDetails.accountNumber || 
-        !employee.bankAccountDetails.bankName) {
+    if (!employee.bankName || !employee.bankAccountNumber) {
       exceptions.push('Missing bank details');
     }
     
@@ -257,7 +359,8 @@ export class CalcDraftService {
         exceptions.push('Negative net pay');
       }
       
-      if (!employee.baseSalary || employee.baseSalary <= 0) {
+      const baseSalary = await this.getEmployeeBaseSalary(employee);
+      if (!baseSalary || baseSalary <= 0) {
         exceptions.push('Zero base salary');
       }
       
@@ -322,7 +425,10 @@ export class CalcDraftService {
         const salaryData = await this.calculateNetSalary(employee);
         const anomalies = await this.flagAnomalies(payrollRunId, employee);
         
-        payrollDetail.baseSalary = employee.baseSalary || 0;
+        const baseSalary = await this.getEmployeeBaseSalary(employee);
+        
+        // ✅ CRITICAL: Update ALL fields before saving
+        payrollDetail.baseSalary = baseSalary;
         payrollDetail.allowances = salaryData.allowances;
         payrollDetail.deductions = salaryData.taxDeduction + salaryData.insuranceDeduction + salaryData.penalties;
         payrollDetail.netSalary = salaryData.netSalary;
@@ -338,12 +444,13 @@ export class CalcDraftService {
           payrollDetail.bankStatus = BankStatus.VALID;
         }
         
-        await payrollDetail.save();
+        // ✅ IMPORTANT: Save and verify
+        const savedDetail = await payrollDetail.save();
+        console.log(`✅ Saved employee ${employee.firstName} ${employee.lastName}: baseSalary=${savedDetail.baseSalary}`);
+        
         totalNetPay += salaryData.netSalary;
       }
       
-      // ✅ FIXED: Always keep status as DRAFT after calculations
-      // Payroll Specialist must manually review and publish
       const updatedRun = await this.payrollRunsModel.findByIdAndUpdate(
         payrollRunId,
         {
@@ -360,7 +467,7 @@ export class CalcDraftService {
         throw new Error(`Failed to update payroll run ${payrollRunId}`);
       }
       
-      console.log(`✅ Draft generation complete: ${exceptionsCount} exceptions flagged, status remains DRAFT`);
+      console.log(`✅ Draft generation complete: ${exceptionsCount} exceptions, totalNetPay=${totalNetPay}`);
       
       return {
         run: updatedRun,
@@ -397,7 +504,9 @@ export class CalcDraftService {
     const salaryData = await this.calculateNetSalary(employeeData);
     const exceptions = await this.flagAnomalies(payrollRunId, employeeData);
     
-    payrollDetail.baseSalary = employeeData.baseSalary || 0;
+    const baseSalary = await this.getEmployeeBaseSalary(employeeData);
+    
+    payrollDetail.baseSalary = baseSalary;
     payrollDetail.allowances = salaryData.allowances;
     payrollDetail.deductions = salaryData.taxDeduction + salaryData.insuranceDeduction + salaryData.penalties;
     payrollDetail.netSalary = salaryData.netSalary;

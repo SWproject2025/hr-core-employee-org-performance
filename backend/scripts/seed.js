@@ -1,11 +1,45 @@
-// scripts/seed.js
-// Run with: npm run seed
+// scripts/clean-and-seed.js
+// Run with: npm run clean-and-seed
 
 import { MongoClient, ObjectId } from 'mongodb';
 
 // Load from environment or use defaults
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
 const DATABASE_NAME = process.env.DATABASE_NAME || 'hr-main';
+
+// ============================================
+// CLEANUP FUNCTION
+// ============================================
+
+async function cleanup(db) {
+  console.log('🧹 STARTING COMPLETE DATABASE CLEANUP...\n');
+
+  try {
+    // Get all collections
+    const collections = await db.listCollections().toArray();
+
+    if (collections.length === 0) {
+      console.log('✅ Database is already empty\n');
+      return;
+    }
+
+    console.log(`📋 Found ${collections.length} collections to drop:`);
+    collections.forEach((col) => console.log(`   • ${col.name}`));
+    console.log('');
+
+    // Drop each collection
+    for (const collection of collections) {
+      await db.collection(collection.name).drop();
+      console.log(`✅ Dropped collection: ${collection.name}`);
+    }
+
+    console.log('\n✅ ALL COLLECTIONS DROPPED SUCCESSFULLY!\n');
+    console.log('═══════════════════════════════════════════════════════\n');
+  } catch (error) {
+    console.error('❌ Error during cleanup:', error);
+    throw error;
+  }
+}
 
 // ============================================
 // DATA GENERATORS
@@ -239,54 +273,40 @@ function generateEmployee(index, options = {}) {
   const lastName = randomElement(EGYPTIAN_DATA.lastNames);
   const fullName = `${firstName} ${lastName}`;
 
-  // National ID (14 digits - Egyptian format)
-  const birthYear = randomNumber(85, 99); // 1985-2000
+  const birthYear = randomNumber(85, 99);
   const nationalId = `2${birthYear}${String(randomNumber(1, 12)).padStart(2, '0')}${String(randomNumber(1, 35)).padStart(2, '0')}${String(randomNumber(10000, 99999))}${randomNumber(0, 9)}`;
 
   const city = randomElement(EGYPTIAN_DATA.cities);
   const streetAddress = `${randomNumber(1, 999)} ${randomElement(EGYPTIAN_DATA.streets)}`;
 
   const employee = {
-    // Core Identity
     employeeNumber: `EMP-${String(index + 1).padStart(4, '0')}`,
     nationalId,
     firstName,
     lastName,
     fullName,
-
-    // Contact Information
     personalEmail: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@email.com`,
     workEmail: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@company.com`,
     mobilePhone: `+2010${randomNumber(10000000, 99999999)}`,
     homePhone: `+202${randomNumber(20000000, 29999999)}`,
-
-    // Address - must be an object according to schema
     address: {
       city,
       streetAddress,
       country: 'Egypt',
     },
-
-    // Demographics
     dateOfBirth: new Date(1985 + (index % 15), index % 12, (index % 28) + 1),
     gender: isMale ? 'MALE' : 'FEMALE',
     maritalStatus: randomElement(['SINGLE', 'MARRIED', 'DIVORCED']),
-
-    // Employment Details
     dateOfHire: randomDate(new Date('2018-01-01'), new Date('2023-12-31')),
     contractStartDate: randomDate(
       new Date('2018-01-01'),
       new Date('2023-12-31'),
     ),
     contractEndDate: null,
-    // Fixed: Use correct enum values
     contractType: randomElement(['FULL_TIME_CONTRACT', 'PART_TIME_CONTRACT']),
-    // Fixed: Use correct enum values (FULL_TIME or PART_TIME, not REMOTE)
     workType: randomElement(['FULL_TIME', 'PART_TIME']),
-    status: index >= 18 ? 'INACTIVE' : 'ACTIVE', // Last 2 inactive
+    status: index >= 18 ? 'INACTIVE' : 'ACTIVE',
     statusEffectiveFrom: new Date(),
-
-    // Banking Information (60% valid, 40% missing)
     ...(hasBankDetails
       ? {
           bankName: randomElement(EGYPTIAN_DATA.banks),
@@ -296,19 +316,13 @@ function generateEmployee(index, options = {}) {
           bankName: null,
           bankAccountNumber: null,
         }),
-
-    // Organizational Links
     payGradeId: payGradeIds.length > 0 ? randomElement(payGradeIds) : null,
     primaryDepartmentId:
       departmentIds.length > 0 ? randomElement(departmentIds) : null,
     primaryPositionId:
       positionIds.length > 0 ? randomElement(positionIds) : null,
-
-    // Profile
     biography: `${fullName} is a dedicated professional with expertise in their field. Joined the company in ${new Date().getFullYear() - randomNumber(1, 5)}.`,
     profilePictureUrl: `https://i.pravatar.cc/150?u=${nationalId}`,
-
-    // Timestamps
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -323,7 +337,6 @@ function generateEmployee(index, options = {}) {
 function generateExceptions(employee, allEmployees) {
   const exceptions = [];
 
-  // Missing bank details
   if (!employee.bankName || !employee.bankAccountNumber) {
     exceptions.push({
       type: 'BANK_DETAILS_MISSING',
@@ -334,7 +347,6 @@ function generateExceptions(employee, allEmployees) {
     });
   }
 
-  // Random exceptions based on index
   const empIndex = allEmployees.indexOf(employee);
 
   if (empIndex % 7 === 0) {
@@ -391,433 +403,369 @@ function generateExceptions(employee, allEmployees) {
 }
 
 // ============================================
-// MAIN SEED FUNCTION
+// SEED FUNCTION
 // ============================================
 
-async function seed() {
+async function seed(db) {
+  console.log('🌱 STARTING FRESH SEED...\n');
+
+  const now = new Date();
+
+  // 1. DEPARTMENTS
+  console.log('🏢 Creating departments...');
+  const departmentDocs = DEPARTMENTS.map((dept) => ({
+    name: dept.name,
+    code: dept.code,
+    description: `${dept.name} Department`,
+    active: true,
+    startDate: now,
+    endDate: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }));
+  const deptResult = await db
+    .collection('departments')
+    .insertMany(departmentDocs);
+  const departmentIds = Object.values(deptResult.insertedIds);
+  console.log(`✅ ${deptResult.insertedCount} departments created\n`);
+
+  // 2. POSITIONS
+  console.log('💼 Creating positions...');
+  const positionDocs = POSITIONS.map((pos) => {
+    const dept = DEPARTMENTS.find((d) => d.name === pos.department);
+    const deptId = departmentIds[DEPARTMENTS.indexOf(dept)];
+
+    return {
+      name: pos.name,
+      code: pos.code,
+      description: `${pos.name} position in ${pos.department}`,
+      departmentId: deptId,
+      active: true,
+      startDate: now,
+      endDate: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  });
+  const posResult = await db.collection('positions').insertMany(positionDocs);
+  const positionIds = Object.values(posResult.insertedIds);
+  console.log(`✅ ${posResult.insertedCount} positions created\n`);
+
+  // 3. ALLOWANCES
+  console.log('💰 Creating allowances...');
+  const allowances = await db.collection('allowance').insertMany([
+    {
+      name: 'Housing Allowance',
+      amount: 2000,
+      status: 'approved',
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      name: 'Transport Allowance',
+      amount: 1000,
+      status: 'approved',
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      name: 'Food Allowance',
+      amount: 800,
+      status: 'approved',
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      name: 'Communication Allowance',
+      amount: 500,
+      status: 'approved',
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ]);
+  const allowanceIds = Object.values(allowances.insertedIds);
+  console.log(`✅ ${allowances.insertedCount} allowances created\n`);
+
+  // 4. PAY GRADES
+  console.log('💵 Creating pay grades...');
+  const payGrades = await db.collection('paygrade').insertMany([
+    {
+      grade: 'Junior Level (L1)',
+      baseSalary: 8000,
+      grossSalary: 11800,
+      status: 'approved',
+      allowances: [allowanceIds[1], allowanceIds[2]],
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      grade: 'Mid Level (L2)',
+      baseSalary: 12000,
+      grossSalary: 16300,
+      status: 'approved',
+      allowances: allowanceIds.slice(0, 3),
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      grade: 'Senior Level (L3)',
+      baseSalary: 18000,
+      grossSalary: 23300,
+      status: 'approved',
+      allowances: allowanceIds,
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      grade: 'Lead Level (L4)',
+      baseSalary: 25000,
+      grossSalary: 32300,
+      status: 'approved',
+      allowances: allowanceIds,
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      grade: 'Manager Level (L5)',
+      baseSalary: 35000,
+      grossSalary: 42300,
+      status: 'approved',
+      allowances: allowanceIds,
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ]);
+  const payGradeIds = Object.values(payGrades.insertedIds);
+  console.log(`✅ ${payGrades.insertedCount} pay grades created\n`);
+
+  // 5. SIGNING BONUSES
+  console.log('🎁 Creating signing bonuses...');
+  const bonuses = await db.collection('signingbonus').insertMany([
+    {
+      positionName: 'Junior Software Engineer',
+      amount: 5000,
+      status: 'approved',
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      positionName: 'Software Engineer',
+      amount: 8000,
+      status: 'approved',
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      positionName: 'Senior Software Engineer',
+      amount: 12000,
+      status: 'approved',
+      approvedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ]);
+  const bonusIds = Object.values(bonuses.insertedIds);
+  console.log(`✅ ${bonuses.insertedCount} signing bonuses created\n`);
+
+  // 6. EMPLOYEES
+  console.log('👥 Creating employees...');
+  const employees = [];
+  for (let i = 0; i < 20; i++) {
+    const hasBankDetails = i < 12;
+    const employee = generateEmployee(i, {
+      payGradeIds,
+      departmentIds,
+      positionIds,
+      hasBankDetails,
+    });
+    employees.push(employee);
+  }
+
+  const empResult = await db
+    .collection('employee_profiles')
+    .insertMany(employees);
+  const employeeIds = Object.values(empResult.insertedIds);
+  console.log(`✅ ${empResult.insertedCount} employees created`);
+  console.log(
+    `   • ${employees.filter((e) => e.bankName).length} with valid bank details`,
+  );
+  console.log(
+    `   • ${employees.filter((e) => !e.bankName).length} with missing bank details\n`,
+  );
+
+  // 7. EMPLOYEE SIGNING BONUSES
+  console.log('🎯 Creating employee signing bonuses...');
+  const empBonuses = [];
+  for (let i = 0; i < 7; i++) {
+    empBonuses.push({
+      employeeId: employeeIds[i],
+      signingBonusId: bonusIds[i % bonusIds.length],
+      givenAmount: [5000, 8000, 12000][i % 3],
+      status: i < 3 ? 'pending' : i < 5 ? 'approved' : 'paid',
+      paymentDate: i >= 5 ? new Date() : null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+  const empBonusResult = await db
+    .collection('employeesigningbonus')
+    .insertMany(empBonuses);
+  console.log(
+    `✅ ${empBonusResult.insertedCount} employee signing bonuses created\n`,
+  );
+
+  // 8. EMPLOYEE PENALTIES
+  console.log('⚠️  Creating employee penalties...');
+  const penalties = [];
+  for (let i = 0; i < 5; i++) {
+    penalties.push({
+      employeeId: employeeIds[i * 4],
+      penalties: [
+        {
+          reason: 'Late arrival',
+          amount: randomNumber(100, 300),
+        },
+        {
+          reason: 'Unauthorized absence',
+          amount: randomNumber(200, 500),
+        },
+      ],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+  const penaltyResult = await db
+    .collection('employeepenalties')
+    .insertMany(penalties);
+  console.log(`✅ ${penaltyResult.insertedCount} employee penalties created\n`);
+
+  // 9. PAYROLL RUN
+  console.log('📋 Creating payroll run...');
+  const runId = `PR-2024-${randomNumber(1000, 9999)}`;
+  const totalNetPay = employees.reduce((sum) => sum + 15000, 0);
+
+  const employeeExceptions = employees
+    .map((emp) => ({
+      employee: emp,
+      exceptions: generateExceptions(emp, employees),
+    }))
+    .filter((e) => e.exceptions.length > 0);
+
+  const payrollRun = {
+    runId,
+    payrollPeriod: new Date(2024, 11, 31),
+    status: 'draft',
+    entity: 'Acme Corporation Egypt',
+    employees: employees.length,
+    exceptions: employeeExceptions.length,
+    totalnetpay: totalNetPay,
+    payrollSpecialistId: employeeIds[0],
+    paymentStatus: 'pending',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const payrollRunResult = await db
+    .collection('payrollruns')
+    .insertOne(payrollRun);
+  const payrollRunId = payrollRunResult.insertedId;
+  console.log(`✅ 1 payroll run created (${runId})\n`);
+
+  // 10. EMPLOYEE PAYROLL DETAILS
+  console.log('💼 Creating employee payroll details...');
+  const payrollDetails = [];
+
+  for (let i = 0; i < employees.length; i++) {
+    const emp = employees[i];
+    const baseSalary = randomNumber(8000, 25000);
+    const allowances = randomNumber(2000, 5000);
+    const deductions = randomNumber(500, 2000);
+    const netSalary = baseSalary + allowances - deductions;
+    const bonus = i < 7 ? randomNumber(1000, 5000) : 0;
+    const netPay = netSalary + bonus;
+
+    payrollDetails.push({
+      employeeId: employeeIds[i],
+      payrollRunId: payrollRunId,
+      baseSalary,
+      allowances,
+      deductions,
+      netSalary,
+      netPay,
+      bonus,
+      bankStatus: emp.bankName ? 'valid' : 'missing',
+      exceptions: !emp.bankName ? 'Missing bank details' : null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  await db.collection('employeepayrolldetails').insertMany(payrollDetails);
+  console.log(`✅ ${payrollDetails.length} payroll details created\n`);
+
+  // SUMMARY
+  console.log('═══════════════════════════════════════════════════════');
+  console.log('✅ ✅ ✅ SEEDING COMPLETE! ✅ ✅ ✅');
+  console.log('═══════════════════════════════════════════════════════');
+  console.log('\n📊 Summary:');
+  console.log(`   • ${DEPARTMENTS.length} Departments`);
+  console.log(`   • ${POSITIONS.length} Positions`);
+  console.log(`   • ${allowances.insertedCount} Allowances`);
+  console.log(`   • ${payGrades.insertedCount} Pay Grades`);
+  console.log(`   • ${bonuses.insertedCount} Signing Bonuses`);
+  console.log(`   • ${empResult.insertedCount} Employees`);
+  console.log(
+    `     - ${employees.filter((e) => e.bankName).length} with valid bank details`,
+  );
+  console.log(
+    `     - ${employees.filter((e) => !e.bankName).length} with missing bank details`,
+  );
+  console.log(
+    `     - ${employees.filter((e) => e.status === 'ACTIVE').length} active`,
+  );
+  console.log(
+    `     - ${employees.filter((e) => e.status === 'INACTIVE').length} inactive`,
+  );
+  console.log(`   • ${empBonusResult.insertedCount} Employee Signing Bonuses`);
+  console.log(`   • ${penaltyResult.insertedCount} Employee Penalties`);
+  console.log(`   • 1 Payroll Run (${runId})`);
+  console.log(`   • ${payrollDetails.length} Payroll Details Records`);
+
+  console.log('\n🚀 Database is clean and ready to use!');
+  console.log(`   • Payroll Run ID: ${runId}\n`);
+}
+
+// ============================================
+// MAIN FUNCTION
+// ============================================
+
+async function main() {
   const client = new MongoClient(MONGO_URI);
 
   try {
     await client.connect();
     console.log('✅ Connected to MongoDB');
     console.log(`📦 Database: ${DATABASE_NAME}\n`);
+    console.log('═══════════════════════════════════════════════════════\n');
 
     const db = client.db(DATABASE_NAME);
 
-    // ============================================
-    // CLEAR EXISTING DATA
-    // ============================================
-    console.log('🗑️  Clearing existing data...');
-    await db.collection('employee_profiles').deleteMany({});
-    await db.collection('departments').deleteMany({});
-    await db.collection('positions').deleteMany({});
-    await db.collection('allowance').deleteMany({});
-    await db.collection('paygrade').deleteMany({});
-    await db.collection('signingbonus').deleteMany({});
-    await db.collection('employeesigningbonus').deleteMany({});
-    await db.collection('payrollruns').deleteMany({});
-    await db.collection('employeepayrolldetails').deleteMany({});
-    await db.collection('employeepenalties').deleteMany({});
-    console.log('✅ Collections cleared\n');
+    // Step 1: Complete cleanup
+    await cleanup(db);
 
-    // ============================================
-    // 1. DEPARTMENTS
-    // ============================================
-    console.log('🏢 Creating departments...');
-    const now = new Date();
-    const departmentDocs = DEPARTMENTS.map((dept) => ({
-      name: dept.name,
-      code: dept.code,
-      description: `${dept.name} Department`,
-      active: true, // Fixed: use 'active' not 'isActive'
-      startDate: now, // Fixed: add startDate
-      endDate: null, // Fixed: add endDate
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }));
-    const deptResult = await db
-      .collection('departments')
-      .insertMany(departmentDocs);
-    const departmentIds = Object.values(deptResult.insertedIds);
-    console.log(`✅ ${deptResult.insertedCount} departments created\n`);
-
-    // ============================================
-    // 2. POSITIONS
-    // ============================================
-    console.log('💼 Creating positions...');
-    const positionDocs = POSITIONS.map((pos) => {
-      const dept = DEPARTMENTS.find((d) => d.name === pos.department);
-      const deptId = departmentIds[DEPARTMENTS.indexOf(dept)];
-
-      return {
-        name: pos.name, // Fixed: use 'name' not 'title'
-        code: pos.code, // Fixed: add required 'code' field
-        description: `${pos.name} position in ${pos.department}`,
-        departmentId: deptId,
-        active: true, // Fixed: use 'active' not 'isActive'
-        startDate: now, // Fixed: add startDate
-        endDate: null, // Fixed: add endDate
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    });
-    const posResult = await db.collection('positions').insertMany(positionDocs);
-    const positionIds = Object.values(posResult.insertedIds);
-    console.log(`✅ ${posResult.insertedCount} positions created\n`);
-
-    // ============================================
-    // 3. ALLOWANCES
-    // ============================================
-    console.log('💰 Creating allowances...');
-    const allowances = await db.collection('allowance').insertMany([
-      {
-        name: 'Housing Allowance',
-        amount: 2000,
-        // Fixed: remove 'taxable' field (not in schema)
-        status: 'approved',
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        name: 'Transport Allowance',
-        amount: 1000,
-        status: 'approved',
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        name: 'Food Allowance',
-        amount: 800,
-        status: 'approved',
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        name: 'Communication Allowance',
-        amount: 500,
-        status: 'approved',
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ]);
-    const allowanceIds = Object.values(allowances.insertedIds);
-    console.log(`✅ ${allowances.insertedCount} allowances created\n`);
-
-    // ============================================
-    // 4. PAY GRADES
-    // ============================================
-    console.log('💵 Creating pay grades...');
-    const payGrades = await db.collection('paygrade').insertMany([
-      {
-        grade: 'Junior Level (L1)',
-        baseSalary: 8000,
-        grossSalary: 11800,
-        status: 'approved',
-        allowances: [allowanceIds[1], allowanceIds[2]], // Transport + Food
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        grade: 'Mid Level (L2)',
-        baseSalary: 12000,
-        grossSalary: 16300,
-        status: 'approved',
-        allowances: allowanceIds.slice(0, 3), // Housing + Transport + Food
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        grade: 'Senior Level (L3)',
-        baseSalary: 18000,
-        grossSalary: 23300,
-        status: 'approved',
-        allowances: allowanceIds, // All allowances
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        grade: 'Lead Level (L4)',
-        baseSalary: 25000,
-        grossSalary: 32300,
-        status: 'approved',
-        allowances: allowanceIds, // All allowances
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        grade: 'Manager Level (L5)',
-        baseSalary: 35000,
-        grossSalary: 42300,
-        status: 'approved',
-        allowances: allowanceIds, // All allowances
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ]);
-    const payGradeIds = Object.values(payGrades.insertedIds);
-    console.log(`✅ ${payGrades.insertedCount} pay grades created\n`);
-
-    // ============================================
-    // 5. SIGNING BONUSES
-    // ============================================
-    console.log('🎁 Creating signing bonuses...');
-    const bonuses = await db.collection('signingbonus').insertMany([
-      {
-        positionName: 'Junior Software Engineer',
-        amount: 5000,
-        status: 'approved',
-        // Fixed: remove 'eligibilityCriteria' field (not in schema)
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        positionName: 'Software Engineer',
-        amount: 8000,
-        status: 'approved',
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        positionName: 'Senior Software Engineer',
-        amount: 12000,
-        status: 'approved',
-        approvedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ]);
-    const bonusIds = Object.values(bonuses.insertedIds);
-    console.log(`✅ ${bonuses.insertedCount} signing bonuses created\n`);
-
-    // ============================================
-    // 6. EMPLOYEES (20 with varied scenarios)
-    // ============================================
-    console.log('👥 Creating employees...');
-
-    // Generate 20 employees with 60% valid bank, 40% missing bank
-    const employees = [];
-    for (let i = 0; i < 20; i++) {
-      const hasBankDetails = i < 12; // First 12 have bank details
-      const employee = generateEmployee(i, {
-        payGradeIds,
-        departmentIds,
-        positionIds,
-        hasBankDetails,
-      });
-      employees.push(employee);
-    }
-
-    const empResult = await db
-      .collection('employee_profiles')
-      .insertMany(employees);
-    const employeeIds = Object.values(empResult.insertedIds);
-    console.log(`✅ ${empResult.insertedCount} employees created`);
-    console.log(
-      `   • ${employees.filter((e) => e.bankName).length} with valid bank details`,
-    );
-    console.log(
-      `   • ${employees.filter((e) => !e.bankName).length} with missing bank details\n`,
-    );
-
-    // ============================================
-    // 7. EMPLOYEE SIGNING BONUSES
-    // ============================================
-    console.log('🎯 Creating employee signing bonuses...');
-    const empBonuses = [];
-    for (let i = 0; i < 7; i++) {
-      empBonuses.push({
-        employeeId: employeeIds[i],
-        signingBonusId: bonusIds[i % bonusIds.length],
-        givenAmount: [5000, 8000, 12000][i % 3],
-        status: i < 3 ? 'pending' : i < 5 ? 'approved' : 'paid',
-        paymentDate: i >= 5 ? new Date() : null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    }
-    const empBonusResult = await db
-      .collection('employeesigningbonus')
-      .insertMany(empBonuses);
-    console.log(
-      `✅ ${empBonusResult.insertedCount} employee signing bonuses created`,
-    );
-    console.log(
-      `   • ${empBonuses.filter((b) => b.status === 'pending').length} pending`,
-    );
-    console.log(
-      `   • ${empBonuses.filter((b) => b.status === 'approved').length} approved`,
-    );
-    console.log(
-      `   • ${empBonuses.filter((b) => b.status === 'paid').length} paid\n`,
-    );
-
-    // ============================================
-    // 8. EMPLOYEE PENALTIES (for some employees)
-    // ============================================
-    console.log('⚠️  Creating employee penalties...');
-    const penalties = [];
-    for (let i = 0; i < 5; i++) {
-      penalties.push({
-        employeeId: employeeIds[i * 4],
-        penalties: [
-          {
-            reason: 'Late arrival',
-            amount: randomNumber(100, 300),
-            // Fixed: remove 'date' field (not in penalty schema)
-          },
-          {
-            reason: 'Unauthorized absence',
-            amount: randomNumber(200, 500),
-          },
-        ],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    }
-    const penaltyResult = await db
-      .collection('employeepenalties')
-      .insertMany(penalties);
-    console.log(
-      `✅ ${penaltyResult.insertedCount} employee penalties created\n`,
-    );
-
-    // ============================================
-    // 9. PAYROLL RUN WITH EXCEPTIONS
-    // ============================================
-    console.log('📋 Creating payroll run...');
-
-    const runId = `PR-2024-${randomNumber(1000, 9999)}`;
-    const totalNetPay = employees.reduce((sum, emp) => {
-      return sum + 15000; // Simplified
-    }, 0);
-
-    // Calculate exceptions
-    const employeeExceptions = employees
-      .map((emp) => ({
-        employee: emp,
-        exceptions: generateExceptions(emp, employees),
-      }))
-      .filter((e) => e.exceptions.length > 0);
-
-    const payrollRun = {
-      runId,
-      payrollPeriod: new Date(2024, 11, 31), // December 2024
-      status: 'draft', // Fixed: use lowercase 'draft' not 'DRAFT'
-      entity: 'Acme Corporation Egypt',
-      employees: employees.length,
-      exceptions: employeeExceptions.length,
-      totalnetpay: totalNetPay,
-      payrollSpecialistId: employeeIds[0],
-      paymentStatus: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const payrollRunResult = await db
-      .collection('payrollruns')
-      .insertOne(payrollRun);
-    const payrollRunId = payrollRunResult.insertedId;
-    console.log(`✅ 1 payroll run created (${runId})`);
-    console.log(
-      `   • ${employeeExceptions.length} employees with exceptions\n`,
-    );
-
-    // ============================================
-    // 10. EMPLOYEE PAYROLL DETAILS
-    // ============================================
-    console.log('💼 Creating employee payroll details...');
-    const payrollDetails = [];
-
-    for (let i = 0; i < employees.length; i++) {
-      const emp = employees[i];
-      const baseSalary = randomNumber(8000, 25000);
-      const allowances = randomNumber(2000, 5000);
-      const deductions = randomNumber(500, 2000);
-      const netSalary = baseSalary + allowances - deductions;
-      const bonus = i < 7 ? randomNumber(1000, 5000) : 0;
-      const netPay = netSalary + bonus;
-
-      payrollDetails.push({
-        employeeId: employeeIds[i],
-        payrollRunId: payrollRunId, // Fixed: use the inserted ID
-        baseSalary,
-        allowances,
-        deductions,
-        netSalary,
-        netPay,
-        bonus,
-        bankStatus: emp.bankName ? 'valid' : 'missing',
-        exceptions: !emp.bankName ? 'Missing bank details' : null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    }
-
-    await db.collection('employeepayrolldetails').insertMany(payrollDetails);
-    console.log(`✅ ${payrollDetails.length} payroll details created\n`);
-
-    // ============================================
-    // SUMMARY
-    // ============================================
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('✅ ✅ ✅ SEEDING COMPLETE! ✅ ✅ ✅');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('\n📊 Summary:');
-    console.log(`   • ${DEPARTMENTS.length} Departments`);
-    console.log(`   • ${POSITIONS.length} Positions`);
-    console.log(`   • ${allowances.insertedCount} Allowances`);
-    console.log(`   • ${payGrades.insertedCount} Pay Grades`);
-    console.log(`   • ${bonuses.insertedCount} Signing Bonuses`);
-    console.log(`   • ${empResult.insertedCount} Employees`);
-    console.log(
-      `     - ${employees.filter((e) => e.bankName).length} with valid bank details`,
-    );
-    console.log(
-      `     - ${employees.filter((e) => !e.bankName).length} with missing bank details`,
-    );
-    console.log(
-      `     - ${employees.filter((e) => e.status === 'ACTIVE').length} active`,
-    );
-    console.log(
-      `     - ${employees.filter((e) => e.status === 'INACTIVE').length} inactive`,
-    );
-    console.log(
-      `   • ${empBonusResult.insertedCount} Employee Signing Bonuses`,
-    );
-    console.log(`   • ${penaltyResult.insertedCount} Employee Penalties`);
-    console.log(`   • 1 Payroll Run (${runId})`);
-    console.log(`     - Status: draft`);
-    console.log(
-      `     - ${employeeExceptions.length} employees with exceptions`,
-    );
-    console.log(`   • ${payrollDetails.length} Payroll Details Records`);
-
-    console.log('\n⚠️  Employees with Exceptions:');
-    employeeExceptions.forEach(({ employee, exceptions }) => {
-      console.log(`   • ${employee.fullName} (${employee.employeeNumber}):`);
-      exceptions.forEach((exc) => {
-        console.log(
-          `     - [${exc.severity}] ${exc.type}: ${exc.description.substring(0, 80)}...`,
-        );
-      });
-    });
-
-    console.log('\n🚀 You can now test your frontend!');
-    console.log(`   • Payroll Run ID: ${runId}`);
-    console.log(
-      `   • Test exception resolution with employees who have missing bank details\n`,
-    );
+    // Step 2: Fresh seed
+    await seed(db);
   } catch (error) {
     console.error('❌ Error:', error);
     process.exit(1);
@@ -827,4 +775,4 @@ async function seed() {
   }
 }
 
-seed();
+main();

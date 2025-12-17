@@ -12,6 +12,7 @@ import { employeePayrollDetailsSchema } from '../models/employeePayrollDetails.s
 import { employeePenaltiesSchema } from '../models/employeePenalties.schema';
 import { paySlipSchema } from '../models/payslip.schema';
 import { EmployeeProfileSchema } from '../../employee-profile/models/employee-profile.schema';
+import { payGradeSchema } from '../../payroll-configuration/models/payGrades.schema'; // ✅ FIXED: use payGradeSchema
 
 @Module({
   imports: [
@@ -22,7 +23,8 @@ import { EmployeeProfileSchema } from '../../employee-profile/models/employee-pr
       { name: 'employeePayrollDetails', schema: employeePayrollDetailsSchema },
       { name: 'employeePenalties', schema: employeePenaltiesSchema },
       { name: 'paySlip', schema: paySlipSchema },
-      { name: 'EmployeeProfile', schema: EmployeeProfileSchema }, // ✅ ADD THIS
+      { name: 'EmployeeProfile', schema: EmployeeProfileSchema },
+      { name: 'payGrade', schema: payGradeSchema }, // ✅ FIXED: lowercase to match schema class
     ]),
   ],
   controllers: [CalcDraftController],
