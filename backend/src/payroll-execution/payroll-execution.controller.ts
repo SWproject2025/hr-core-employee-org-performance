@@ -13,7 +13,7 @@ import { Roles } from '../Common/Decorators/roles.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums'; 
 
 @Controller('payroll-execution')
-// @UseGuards(JwtAuthGuard, RolesGuard) // Temporarily disabled for development
+@UseGuards(JwtAuthGuard, RolesGuard) // Temporarily disabled for development
 export class PayrollExecutionController {
   constructor(private readonly payrollExecutionService: PayrollExecutionService) {}
 

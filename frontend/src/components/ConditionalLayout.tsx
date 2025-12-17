@@ -17,7 +17,7 @@ export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   // Redirect to login if not authenticated (except on login page)
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isLoginPage) {
-      router.push('/login');
+      router.push('/');
     }
   }, [isAuthenticated, isLoading, isLoginPage, router]);
 

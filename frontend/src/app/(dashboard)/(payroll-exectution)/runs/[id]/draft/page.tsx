@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useParams, useRouter } from 'next/navigation';
 import { 
@@ -28,13 +28,140 @@ import {
   Gift,
   X,
   Check,
-  Eye,
-  MessageSquare
+  MessageSquare,
+  LogOut,
+  ShieldAlert
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext'; // Adjust path as needed
 
-const API_URL = "http://localhost:3000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
-// Types
+// System roles matching the backend enum
+const SystemRole = {
+  PAYROLL_SPECIALIST: 'PAYROLL_SPECIALIST',
+  PAYROLL_MANAGER: 'PAYROLL_MANAGER',
+  FINANCE_STAFF: 'FINANCE_STAFF',
+} as const;
+
+// ============ TOAST COMPONENT ============
+interface ToastProps {
+  message: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  onClose: () => void;
+}
+
+const Toast: React.FC<ToastProps> = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColors = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    warning: 'bg-amber-500',
+    info: 'bg-blue-500'
+  };
+
+  const icons = {
+    success: <CheckCircle size={20} />,
+    error: <XCircle size={20} />,
+    warning: <AlertTriangle size={20} />,
+    info: <AlertCircle size={20} />
+  };
+
+  return (
+    <div className={`${bgColors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] max-w-md animate-slide-in`}>
+      {icons[type]}
+      <p className="flex-1 text-sm font-medium">{message}</p>
+      <button onClick={onClose} className="hover:bg-white/20 rounded p-1 transition">
+        <X size={16} />
+      </button>
+    </div>
+  );
+};
+
+// Toast Container
+interface ToastItem {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+}
+
+const ToastContainer: React.FC<{ toasts: ToastItem[]; removeToast: (id: string) => void }> = ({ toasts, removeToast }) => {
+  return (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+      {toasts.map((toast) => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
+    </div>
+  );
+};
+
+// Custom hook for toast management
+const useToast = () => {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const addToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+    const id = Date.now().toString();
+    setToasts((prev) => [...prev, { id, message, type }]);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
+
+  return { toasts, addToast, removeToast };
+};
+
+// ============ USER INFO BAR ============
+const UserInfoBar = () => {
+  const { user, logout } = useAuth();
+  
+  if (!user) return null;
+
+  const userRoles = user.roles.join(', ').replace(/_/g, ' ');
+  
+  return (
+    <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+            <User size={20} />
+          </div>
+          <div>
+            <p className="font-semibold">
+              {user.firstName} {user.lastName}
+            </p>
+            <p className="text-sm text-blue-100">{user.email}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-xs text-blue-200">Role(s)</p>
+            <p className="text-sm font-medium">{userRoles}</p>
+          </div>
+          <button
+            onClick={logout}
+            className="p-2 hover:bg-white/10 rounded-lg transition"
+            title="Logout"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ TYPES ============
 interface PayrollRun {
   runId: string;
   _id: string;
@@ -105,10 +232,15 @@ interface AdjustmentModalData {
   reason: string;
 }
 
+// ============ MAIN COMPONENT ============
 const PayrollDraftPage = () => {
+  const { user, token, isAuthenticated, isLoading: authLoading, hasRole } = useAuth();
   const { id } = useParams();
   const router = useRouter();
   const runId = id as string;
+  
+  // Toast hook
+  const { toasts, addToast, removeToast } = useToast();
   
   // State
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null);
@@ -132,7 +264,7 @@ const PayrollDraftPage = () => {
   const [resolving, setResolving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   
-  // ✅ NEW: Enhanced exception modal state
+  // Exception modal state
   const [showExceptionModal, setShowExceptionModal] = useState(false);
   const [currentExceptionEmployee, setCurrentExceptionEmployee] = useState<Employee | null>(null);
   
@@ -154,12 +286,33 @@ const PayrollDraftPage = () => {
   const [editPaymentDate, setEditPaymentDate] = useState('');
   const [editingPreRun, setEditingPreRun] = useState(false);
 
+  // Create axios config with authorization header
+  const getAuthHeaders = useCallback(() => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  }), [token]);
+
+  // Redirect to login if not authenticated
   useEffect(() => {
-    if (runId) {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  // Check role access - only PAYROLL_SPECIALIST can access this page
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && !hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+      addToast('Access denied. Only Payroll Specialists can access this page.', 'error');
+      router.push('/runs');
+    }
+  }, [authLoading, isAuthenticated, hasRole, router, addToast]);
+
+  useEffect(() => {
+    if (runId && isAuthenticated && token && hasRole(SystemRole.PAYROLL_SPECIALIST)) {
       fetchPayrollDraft();
       fetchPreRunItems();
     }
-  }, [runId]);
+  }, [runId, isAuthenticated, token, hasRole]);
 
   const fetchPayrollDraft = async () => {
     try {
@@ -173,7 +326,8 @@ const PayrollDraftPage = () => {
       }
 
       const response = await axios.get(
-        `${API_URL}/payroll-execution/payroll-runs/${runId}/review/draft`
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/review/draft`,
+        { headers: getAuthHeaders() }
       );
 
       const runData = response.data;
@@ -204,6 +358,18 @@ const PayrollDraftPage = () => {
       setEmployees(transformedData.employees);
     } catch (err: any) {
       console.error('Failed to fetch payroll draft:', err);
+      
+      if (err.response?.status === 401) {
+        router.push('/login');
+        return;
+      }
+      
+      if (err.response?.status === 403) {
+        addToast('You do not have permission to view this payroll draft', 'error');
+        router.push('/runs');
+        return;
+      }
+      
       setError(err.response?.data?.message || 'Failed to load payroll data');
     } finally {
       setLoading(false);
@@ -213,8 +379,8 @@ const PayrollDraftPage = () => {
   const fetchPreRunItems = async () => {
     try {
       const [bonusesRes, benefitsRes] = await Promise.all([
-        axios.get(`${API_URL}/payroll-execution/signing-bonuses/pending`),
-        axios.get(`${API_URL}/payroll-execution/benefits/pending`)
+        axios.get(`${API_URL}/payroll-execution/signing-bonuses/pending`, { headers: getAuthHeaders() }),
+        axios.get(`${API_URL}/payroll-execution/benefits/pending`, { headers: getAuthHeaders() })
       ]);
 
       const allItems: PreRunItem[] = [
@@ -223,8 +389,11 @@ const PayrollDraftPage = () => {
       ];
 
       setPreRunItems(allItems);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch pre-run items:', err);
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        addToast('Failed to load pre-run items', 'warning');
+      }
     }
   };
 
@@ -288,11 +457,11 @@ const PayrollDraftPage = () => {
 
   const handleCreateAdjustment = async () => {
     if (!adjustmentData.amount || adjustmentData.amount <= 0) {
-      alert('Please enter a valid amount');
+      addToast('Please enter a valid amount', 'warning');
       return;
     }
     if (!adjustmentData.reason.trim()) {
-      alert('Please provide a reason for the adjustment');
+      addToast('Please provide a reason for the adjustment', 'warning');
       return;
     }
 
@@ -306,16 +475,17 @@ const PayrollDraftPage = () => {
           type: adjustmentData.type,
           amount: adjustmentData.amount,
           reason: adjustmentData.reason
-        }
+        },
+        { headers: getAuthHeaders() }
       );
       
-      alert(`${adjustmentData.type.charAt(0).toUpperCase() + adjustmentData.type.slice(1)} adjustment created successfully!`);
+      addToast(`${adjustmentData.type.charAt(0).toUpperCase() + adjustmentData.type.slice(1)} adjustment created successfully!`, 'success');
       setShowAdjustmentModal(false);
       setAdjustmentData({ employeeId: '', employeeName: '', type: 'bonus', amount: 0, reason: '' });
       fetchPayrollDraft();
     } catch (err: any) {
       console.error('Failed to create adjustment:', err);
-      alert(err.response?.data?.message || 'Failed to create adjustment');
+      addToast(err.response?.data?.message || 'Failed to create adjustment', 'error');
     } finally {
       setAdjusting(false);
     }
@@ -329,12 +499,12 @@ const PayrollDraftPage = () => {
         ? `${API_URL}/payroll-execution/signing-bonuses/${item._id}/approve`
         : `${API_URL}/payroll-execution/benefits/${item._id}/approve`;
       
-      await axios.patch(endpoint);
-      alert('Item approved successfully!');
+      await axios.patch(endpoint, {}, { headers: getAuthHeaders() });
+      addToast('Item approved successfully!', 'success');
       fetchPreRunItems();
       fetchPayrollDraft();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to approve item');
+      addToast(err.response?.data?.message || 'Failed to approve item', 'error');
     }
   };
 
@@ -348,12 +518,12 @@ const PayrollDraftPage = () => {
         ? `${API_URL}/payroll-execution/signing-bonuses/${item._id}/reject`
         : `${API_URL}/payroll-execution/benefits/${item._id}/reject`;
       
-      await axios.patch(endpoint);
-      alert('Item rejected successfully!');
+      await axios.patch(endpoint, {}, { headers: getAuthHeaders() });
+      addToast('Item rejected successfully!', 'success');
       fetchPreRunItems();
       fetchPayrollDraft();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to reject item');
+      addToast(err.response?.data?.message || 'Failed to reject item', 'error');
     }
   };
 
@@ -367,7 +537,7 @@ const PayrollDraftPage = () => {
   const handleEditPreRunItem = async () => {
     if (!editingPreRunItem) return;
     if (editAmount <= 0) {
-      alert('Please enter a valid amount');
+      addToast('Please enter a valid amount', 'warning');
       return;
     }
 
@@ -383,15 +553,15 @@ const PayrollDraftPage = () => {
         payload.paymentDate = editPaymentDate;
       }
       
-      await axios.patch(endpoint, payload);
+      await axios.patch(endpoint, payload, { headers: getAuthHeaders() });
       
-      alert('Item updated successfully!');
+      addToast('Item updated successfully!', 'success');
       setShowEditPreRunModal(false);
       setEditingPreRunItem(null);
       fetchPreRunItems();
       fetchPayrollDraft();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update item');
+      addToast(err.response?.data?.message || 'Failed to update item', 'error');
     } finally {
       setEditingPreRun(false);
     }
@@ -413,63 +583,91 @@ const PayrollDraftPage = () => {
 
   const handleBulkApprovePreRun = async () => {
     if (selectedPreRunItems.length === 0) {
-      alert('Please select items first');
+      addToast('Please select items first', 'warning');
       return;
     }
 
     if (!window.confirm(`Approve ${selectedPreRunItems.length} items?`)) return;
 
     try {
+      let successCount = 0;
+      let failCount = 0;
+      
       await Promise.all(
         selectedPreRunItems.map(async (itemId) => {
           const item = preRunItems.find(i => i._id === itemId);
           if (item) {
-            const endpoint = item.type === 'Signing Bonus'
-              ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/approve`
-              : `${API_URL}/payroll-execution/benefits/${itemId}/approve`;
-            await axios.patch(endpoint);
+            try {
+              const endpoint = item.type === 'Signing Bonus'
+                ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/approve`
+                : `${API_URL}/payroll-execution/benefits/${itemId}/approve`;
+              await axios.patch(endpoint, {}, { headers: getAuthHeaders() });
+              successCount++;
+            } catch {
+              failCount++;
+            }
           }
         })
       );
-      alert('Bulk approval completed successfully!');
+      
+      if (failCount > 0) {
+        addToast(`Approved ${successCount} items, ${failCount} failed`, 'warning');
+      } else {
+        addToast(`Successfully approved ${successCount} items!`, 'success');
+      }
+      
       setSelectedPreRunItems([]);
       fetchPreRunItems();
       fetchPayrollDraft();
     } catch (err) {
-      alert('Some items failed to approve');
+      addToast('Bulk approval failed', 'error');
     }
   };
 
   const handleBulkRejectPreRun = async () => {
     if (selectedPreRunItems.length === 0) {
-      alert('Please select items first');
+      addToast('Please select items first', 'warning');
       return;
     }
 
     if (!window.confirm(`Reject ${selectedPreRunItems.length} items?`)) return;
 
     try {
+      let successCount = 0;
+      let failCount = 0;
+      
       await Promise.all(
         selectedPreRunItems.map(async (itemId) => {
           const item = preRunItems.find(i => i._id === itemId);
           if (item) {
-            const endpoint = item.type === 'Signing Bonus'
-              ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/reject`
-              : `${API_URL}/payroll-execution/benefits/${itemId}/reject`;
-            await axios.patch(endpoint);
+            try {
+              const endpoint = item.type === 'Signing Bonus'
+                ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/reject`
+                : `${API_URL}/payroll-execution/benefits/${itemId}/reject`;
+              await axios.patch(endpoint, {}, { headers: getAuthHeaders() });
+              successCount++;
+            } catch {
+              failCount++;
+            }
           }
         })
       );
-      alert('Bulk rejection completed successfully!');
+      
+      if (failCount > 0) {
+        addToast(`Rejected ${successCount} items, ${failCount} failed`, 'warning');
+      } else {
+        addToast(`Successfully rejected ${successCount} items!`, 'success');
+      }
+      
       setSelectedPreRunItems([]);
       fetchPreRunItems();
       fetchPayrollDraft();
     } catch (err) {
-      alert('Some items failed to reject');
+      addToast('Bulk rejection failed', 'error');
     }
   };
 
-  // ============ ENHANCED EXCEPTION HANDLERS (FROM EXCEPTION RESOLUTION PAGE) ============
+  // ============ EXCEPTION HANDLERS ============
   
   const openExceptionModal = (employee: Employee) => {
     setCurrentExceptionEmployee(employee);
@@ -487,7 +685,7 @@ const PayrollDraftPage = () => {
     if (!currentExceptionEmployee) return;
     
     if (!resolutionNote.trim()) {
-      alert('Please provide a resolution note');
+      addToast('Please provide a resolution note', 'warning');
       return;
     }
     
@@ -496,7 +694,8 @@ const PayrollDraftPage = () => {
       
       await axios.patch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions/${currentExceptionEmployee.id}/resolve`,
-        { resolutionNote }
+        { resolutionNote },
+        { headers: getAuthHeaders() }
       );
       
       setEmployees(prev => prev.map(emp => 
@@ -513,10 +712,10 @@ const PayrollDraftPage = () => {
         } : null);
       }
       
-      alert('Exception resolved successfully!');
+      addToast('Exception resolved successfully!', 'success');
       closeExceptionModal();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to resolve exception');
+      addToast(err.response?.data?.message || 'Failed to resolve exception', 'error');
     } finally {
       setResolving(false);
     }
@@ -546,7 +745,7 @@ const PayrollDraftPage = () => {
     const pendingPreRunCount = preRunItems.filter(i => i.status === 'PENDING' || i.status === 'pending').length;
     
     if (pendingPreRunCount > 0) {
-      alert(`There are ${pendingPreRunCount} pending pre-run items. Please approve or reject them before publishing.`);
+      addToast(`There are ${pendingPreRunCount} pending pre-run items. Please approve or reject them before publishing.`, 'warning');
       return;
     }
     
@@ -558,11 +757,19 @@ const PayrollDraftPage = () => {
     
     try {
       setPublishing(true);
-      await axios.patch(`${API_URL}/payroll-execution/payroll-runs/${runId}/publish`);
-      alert('Payroll successfully published for manager and finance approval!');
-      router.push(`/runs/${runId}`);
+      await axios.patch(
+        `${API_URL}/payroll-execution/payroll-runs/${runId}/publish`,
+        {},
+        { headers: getAuthHeaders() }
+      );
+      addToast('Payroll successfully published for manager and finance approval!', 'success');
+      
+      // Small delay to show the toast before redirecting
+      setTimeout(() => {
+        router.push(`/runs/${runId}`);
+      }, 1500);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to publish payroll for approval');
+      addToast(err.response?.data?.message || 'Failed to publish payroll for approval', 'error');
     } finally {
       setPublishing(false);
     }
@@ -627,43 +834,103 @@ const PayrollDraftPage = () => {
 
   // ============ RENDER ============
 
-  if (loading) {
+  // Auth loading state
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading payroll draft...</p>
+          <p className="text-gray-600 font-medium">Checking authentication...</p>
         </div>
       </div>
     );
   }
 
+  // Not authenticated
+  if (!isAuthenticated) {
+    return null; // Will redirect to login
+  }
+
+  // Not authorized (not a PAYROLL_SPECIALIST)
+  if (!hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <UserInfoBar />
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 80px)' }}>
+          <div className="text-center max-w-md">
+            <ShieldAlert size={64} className="mx-auto text-red-500 mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+            <p className="text-gray-600 mb-4">
+              Only Payroll Specialists can access the Draft Review page.
+            </p>
+            <p className="text-sm text-gray-500 mb-6">
+              Your role: {user?.roles.join(', ').replace(/_/g, ' ')}
+            </p>
+            <button
+              onClick={() => router.push('/runs')}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Go to Payroll Runs
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Data loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <UserInfoBar />
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 80px)' }}>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600 font-medium">Loading payroll draft...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <XCircle size={64} className="mx-auto text-red-500 mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Payroll</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={fetchPayrollDraft}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 mx-auto"
-          >
-            <RefreshCw size={18} />
-            Retry
-          </button>
+      <div className="min-h-screen bg-gray-50">
+        <UserInfoBar />
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 80px)' }}>
+          <div className="text-center max-w-md">
+            <XCircle size={64} className="mx-auto text-red-500 mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Payroll</h2>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <button
+              onClick={fetchPayrollDraft}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 mx-auto"
+            >
+              <RefreshCw size={18} />
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
+  // No data state
   if (!payrollRun) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <FileText size={64} className="mx-auto text-gray-400 mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Draft Payroll Found</h2>
-          <p className="text-gray-600">There are no payroll drafts available for review.</p>
+      <div className="min-h-screen bg-gray-50">
+        <UserInfoBar />
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 80px)' }}>
+          <div className="text-center">
+            <FileText size={64} className="mx-auto text-gray-400 mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">No Draft Payroll Found</h2>
+            <p className="text-gray-600">There are no payroll drafts available for review.</p>
+          </div>
         </div>
       </div>
     );
@@ -671,6 +938,12 @@ const PayrollDraftPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+      
+      {/* User Info Bar */}
+      <UserInfoBar />
+      
       {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-6">
@@ -931,7 +1204,6 @@ const PayrollDraftPage = () => {
                                 {expandedRows.has(employee.id) ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                               </button>
                               
-                              {/* ✅ NEW: Exception resolution button */}
                               {employee.exceptions && (
                                 <button
                                   onClick={() => openExceptionModal(employee)}
@@ -1065,7 +1337,7 @@ const PayrollDraftPage = () => {
                                     </div>
                                   </div>
 
-                                  {/* ✅ UPDATED: Exception Summary (no inline resolution) */}
+                                  {/* Exception Summary */}
                                   {employee.exceptions && (
                                     <div className="bg-orange-50 rounded-lg p-5 border-2 border-orange-300">
                                       <h4 className="font-bold text-orange-900 mb-4 flex items-center gap-2">
@@ -1258,7 +1530,7 @@ const PayrollDraftPage = () => {
         </div>
       </div>
 
-      {/* ✅ NEW: Enhanced Exception Resolution Modal (FROM EXCEPTION RESOLUTION PAGE) */}
+      {/* Exception Resolution Modal */}
       {showExceptionModal && currentExceptionEmployee && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1478,6 +1750,23 @@ const PayrollDraftPage = () => {
           </div>
         </div>
       )}
+
+      {/* CSS for toast animation */}
+      <style jsx global>{`
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 };

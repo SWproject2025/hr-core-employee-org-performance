@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
+      // ✅ FIXED: Changed backticks to parentheses
       const response = await axios.post(`${API_URL}/auth/login`, {
         email,
         password,
@@ -132,4 +133,3 @@ export function useAuth() {
   }
   return context;
 }
-

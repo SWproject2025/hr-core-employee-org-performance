@@ -18,28 +18,20 @@ import {
   ChevronDown,
   ChevronUp,
   MessageSquare,
-  CheckSquare
+  CheckSquare,
+  LogOut
 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext'; // Adjust path as needed
 
-const API_URL = "http://localhost:3000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
-const RoleSwitcher = ({ currentRole, onRoleChange }: { currentRole: string; onRoleChange: (role: string) => void }) => {
-  return (
-    <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 border-2 border-blue-500 z-50">
-      <p className="text-xs font-semibold text-gray-700 mb-2">🧪 Test Role</p>
-      <select 
-        value={currentRole} 
-        onChange={(e) => onRoleChange(e.target.value)}
-        className="w-full px-3 py-2 border rounded text-sm"
-      >
-        <option value="PAYROLL_SPECIALIST">Payroll Specialist</option>
-        <option value="PAYROLL_MANAGER">Payroll Manager</option>
-        <option value="FINANCE_STAFF">Finance Staff</option>
-      </select>
-    </div>
-  );
-};
+// System roles matching the backend enum
+const SystemRole = {
+  PAYROLL_SPECIALIST: 'PAYROLL_SPECIALIST',
+  PAYROLL_MANAGER: 'PAYROLL_MANAGER',
+  FINANCE_STAFF: 'FINANCE_STAFF',
+} as const;
 
 interface Employee {
   _id: string;
@@ -96,8 +88,48 @@ interface ApprovalHistoryItem {
   reason?: string;
 }
 
+// Helper component to show current user info
+const UserInfoBar = () => {
+  const { user, logout, hasRole } = useAuth();
+  
+  if (!user) return null;
+
+  const userRoles = user.roles.join(', ').replace(/_/g, ' ');
+  
+  return (
+    <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 rounded-lg shadow-md mb-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+            <Users size={20} />
+          </div>
+          <div>
+            <p className="font-semibold">
+              {user.firstName} {user.lastName}
+            </p>
+            <p className="text-sm text-blue-100">{user.email}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-xs text-blue-200">Role(s)</p>
+            <p className="text-sm font-medium">{userRoles}</p>
+          </div>
+          <button
+            onClick={logout}
+            className="p-2 hover:bg-white/10 rounded-lg transition"
+            title="Logout"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RunDetailsPage = () => {
-  const [role, setRole] = useState('PAYROLL_SPECIALIST');
+  const { user, token, isAuthenticated, isLoading: authLoading, hasRole } = useAuth();
   const params = useParams();
   const router = useRouter();
   const [runId] = useState(params.id as string); 
@@ -126,14 +158,25 @@ const RunDetailsPage = () => {
   const [showUnfreezeModal, setShowUnfreezeModal] = useState(false);
   const [unfreezeReason, setUnfreezeReason] = useState('');
 
-  const user = { id: '123', name: 'John Doe' };
+  // Create axios config with authorization header
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  });
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   useEffect(() => {
-    if (runId) {
+    if (runId && isAuthenticated && token) {
       fetchRunDetails();
       fetchApprovalHistory();
     }
-  }, [runId]);
+  }, [runId, isAuthenticated, token]);
 
   // Redirect to draft page if status is DRAFT
   useEffect(() => {
@@ -147,46 +190,69 @@ const RunDetailsPage = () => {
       setLoading(true);
       setError('');
       
-      const runResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}`);
+      const runResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}`, {
+        headers: getAuthHeaders(),
+      });
+      
+      if (runResponse.status === 401) {
+        router.push('/login');
+        return;
+      }
+      
+      if (runResponse.status === 403) {
+        setError('You do not have permission to view this payroll run');
+        return;
+      }
+      
       if (!runResponse.ok) throw new Error('Failed to fetch payroll run');
       
       const runData = await runResponse.json();
       setRun(runData);
       
-      const draftResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/review/draft`);
+      // Fetch draft review - requires PAYROLL_SPECIALIST role
+      const draftResponse = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/review/draft`, {
+        headers: getAuthHeaders(),
+      });
+      
       if (draftResponse.ok) {
         const draftData = await draftResponse.json();
         if (draftData.employees && Array.isArray(draftData.employees)) {
           setEmployees(draftData.employees);
-          // Reset resolved employees when data is refreshed
           setResolvedEmployees(new Set());
         }
       }
 
-      const [bonusesRes, benefitsRes] = await Promise.all([
-        fetch(`${API_URL}/payroll-execution/signing-bonuses/pending`),
-        fetch(`${API_URL}/payroll-execution/benefits/pending`)
-      ]);
+      // Fetch pre-run items - requires PAYROLL_SPECIALIST role
+      if (hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+        const [bonusesRes, benefitsRes] = await Promise.all([
+          fetch(`${API_URL}/payroll-execution/signing-bonuses/pending`, {
+            headers: getAuthHeaders(),
+          }),
+          fetch(`${API_URL}/payroll-execution/benefits/pending`, {
+            headers: getAuthHeaders(),
+          })
+        ]);
 
-      let allPreRunItems: PreRunItem[] = [];
-      
-      if (bonusesRes.ok) {
-        const bonuses = await bonusesRes.json();
-        allPreRunItems = [...allPreRunItems, ...bonuses.map((b: PreRunItem) => ({
-          ...b,
-          type: 'Signing Bonus'
-        }))];
-      }
-      
-      if (benefitsRes.ok) {
-        const benefits = await benefitsRes.json();
-        allPreRunItems = [...allPreRunItems, ...benefits.map((b: PreRunItem) => ({
-          ...b,
-          type: b.benefitType || 'Benefit'
-        }))];
-      }
+        let allPreRunItems: PreRunItem[] = [];
+        
+        if (bonusesRes.ok) {
+          const bonuses = await bonusesRes.json();
+          allPreRunItems = [...allPreRunItems, ...bonuses.map((b: PreRunItem) => ({
+            ...b,
+            type: 'Signing Bonus'
+          }))];
+        }
+        
+        if (benefitsRes.ok) {
+          const benefits = await benefitsRes.json();
+          allPreRunItems = [...allPreRunItems, ...benefits.map((b: PreRunItem) => ({
+            ...b,
+            type: b.benefitType || 'Benefit'
+          }))];
+        }
 
-      setPreRunItems(allPreRunItems);
+        setPreRunItems(allPreRunItems);
+      }
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load run details');
@@ -197,7 +263,10 @@ const RunDetailsPage = () => {
 
   const fetchApprovalHistory = async () => {
     try {
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/approvals`);
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs/${runId}/approvals`, {
+        headers: getAuthHeaders(),
+      });
+      
       if (response.ok) {
         const data = await response.json();
         setApprovalHistory(Array.isArray(data) ? data : []);
@@ -210,9 +279,14 @@ const RunDetailsPage = () => {
     }
   };
 
-  // ============ EXCEPTION RESOLUTION (Manager) ============
+  // ============ EXCEPTION RESOLUTION (Manager Only) ============
   
   const handleResolveException = async (employeePayrollDetailId: string, employeeProfileId: string) => {
+    if (!hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+      alert('Only Payroll Specialists can resolve exceptions');
+      return;
+    }
+    
     if (!resolutionNote.trim()) {
       alert('Please provide a resolution note');
       return;
@@ -221,30 +295,27 @@ const RunDetailsPage = () => {
     try {
       setIsResolving(true);
       
-      // Log for debugging
-      console.log('Resolving exception:', {
-        runId,
-        employeePayrollDetailId,
-        employeeProfileId,
-        resolutionNote
-      });
-      
-      // Try with employeeProfileId first (this is what the backend likely expects)
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/exceptions/${employeeProfileId}/resolve`,
         {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ resolutionNote })
         }
       );
       
-      console.log('Response status:', response.status);
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
+      
+      if (response.status === 403) {
+        alert('You do not have permission to resolve exceptions');
+        return;
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Error response:', errorText);
-        
         let errorMessage = 'Failed to resolve exception';
         try {
           const errorData = JSON.parse(errorText);
@@ -255,13 +326,8 @@ const RunDetailsPage = () => {
         throw new Error(errorMessage);
       }
       
-      const result = await response.json();
-      console.log('Resolve result:', result);
-      
-      // Update local state to hide the resolve button
+      // Update local state
       setResolvedEmployees(prev => new Set([...prev, employeePayrollDetailId]));
-      
-      // Also update the employees array to remove the exception
       setEmployees(prev => prev.map(emp => {
         if (emp._id === employeePayrollDetailId) {
           return { ...emp, exceptions: undefined };
@@ -269,7 +335,6 @@ const RunDetailsPage = () => {
         return emp;
       }));
       
-      // Close the expanded row and reset form
       setExpandedRows(prev => {
         const newSet = new Set(prev);
         newSet.delete(employeePayrollDetailId);
@@ -288,8 +353,6 @@ const RunDetailsPage = () => {
     }
   };
 
-  // ============ ROW EXPANSION ============
-  
   const toggleRowExpansion = (id: string) => {
     setExpandedRows(prev => {
       const newSet = new Set(prev);
@@ -302,16 +365,28 @@ const RunDetailsPage = () => {
     });
   };
 
-  // ============ PUBLISH / APPROVE / REJECT HANDLERS ============
-
+  // ============ PUBLISH (PAYROLL_SPECIALIST only) ============
   const handlePublish = async () => {
+    if (!hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+      alert('Only Payroll Specialists can publish payroll runs');
+      return;
+    }
+    
     if (!confirm('Send this payroll for manager approval?')) return;
     
     try {
       const response = await fetch(
         `${API_URL}/payroll-execution/payroll-runs/${runId}/publish`,
-        { method: 'PATCH' }
+        { 
+          method: 'PATCH',
+          headers: getAuthHeaders(),
+        }
       );
+      
+      if (response.status === 403) {
+        alert('You do not have permission to publish payroll runs');
+        return;
+      }
       
       if (!response.ok) throw new Error('Failed to publish');
       
@@ -323,7 +398,13 @@ const RunDetailsPage = () => {
     }
   };
 
+  // ============ MANAGER APPROVE/REJECT (PAYROLL_MANAGER only) ============
   const handleManagerApprove = async () => {
+    if (!hasRole(SystemRole.PAYROLL_MANAGER)) {
+      alert('Only Payroll Managers can approve payroll runs');
+      return;
+    }
+    
     const unresolvedExceptions = employees.filter(e => e.exceptions && !resolvedEmployees.has(e._id)).length;
     
     if (unresolvedExceptions > 0) {
@@ -339,10 +420,15 @@ const RunDetailsPage = () => {
         `${API_URL}/payroll-execution/payroll-runs/${runId}/manager-approve`,
         { 
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ approverId: "6940380702779cf63544e8fe" })
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ approverId: user?.employeeProfileId })
         }
       );
+      
+      if (response.status === 403) {
+        alert('You do not have permission to approve payroll runs');
+        return;
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -366,6 +452,11 @@ const RunDetailsPage = () => {
   };
 
   const handleManagerReject = async () => {
+    if (!hasRole(SystemRole.PAYROLL_MANAGER)) {
+      alert('Only Payroll Managers can reject payroll runs');
+      return;
+    }
+    
     if (!rejectionReason.trim()) {
       alert('Please provide a rejection reason');
       return;
@@ -376,13 +467,18 @@ const RunDetailsPage = () => {
         `${API_URL}/payroll-execution/payroll-runs/${runId}/manager-reject`,
         {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ 
             reason: rejectionReason,
-            approverId: "6940380702779cf63544e8fe"
+            approverId: user?.employeeProfileId
           })
         }
       );
+      
+      if (response.status === 403) {
+        alert('You do not have permission to reject payroll runs');
+        return;
+      }
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -400,7 +496,13 @@ const RunDetailsPage = () => {
     }
   };
 
+  // ============ FINANCE APPROVE/REJECT (FINANCE_STAFF only) ============
   const handleFinanceApprove = async () => {
+    if (!hasRole(SystemRole.FINANCE_STAFF)) {
+      alert('Only Finance Staff can approve payroll runs');
+      return;
+    }
+    
     if (!confirm('Approve this payroll for finalization?')) return;
     
     try {
@@ -408,10 +510,15 @@ const RunDetailsPage = () => {
         `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-approve`,
         { 
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ approverId: "6940380702779cf63544e8ff" })
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ approverId: user?.employeeProfileId })
         }
       );
+      
+      if (response.status === 403) {
+        alert('You do not have permission to approve payroll runs');
+        return;
+      }
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -428,6 +535,11 @@ const RunDetailsPage = () => {
   };
 
   const handleFinanceReject = async () => {
+    if (!hasRole(SystemRole.FINANCE_STAFF)) {
+      alert('Only Finance Staff can reject payroll runs');
+      return;
+    }
+    
     if (!rejectionReason.trim()) {
       alert('Please provide a rejection reason');
       return;
@@ -438,13 +550,18 @@ const RunDetailsPage = () => {
         `${API_URL}/payroll-execution/payroll-runs/${runId}/finance-reject`,
         {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ 
             reason: rejectionReason,
-            approverId: user.id 
+            approverId: user?.employeeProfileId 
           })
         }
       );
+      
+      if (response.status === 403) {
+        alert('You do not have permission to reject payroll runs');
+        return;
+      }
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -462,7 +579,13 @@ const RunDetailsPage = () => {
     }
   };
 
+  // ============ FREEZE/UNFREEZE (PAYROLL_MANAGER or FINANCE_STAFF) ============
   const handleFreeze = async () => {
+    if (!hasRole(SystemRole.PAYROLL_MANAGER) ) {
+      alert('Only Payroll Managers or Finance Staff can freeze payroll runs');
+      return;
+    }
+    
     if (!confirm('Freeze this payroll? No further changes will be allowed.')) return;
     
     try {
@@ -470,10 +593,15 @@ const RunDetailsPage = () => {
         `${API_URL}/payroll-execution/payroll-runs/${runId}/freeze`,
         { 
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ reason: 'Payroll finalized' })
         }
       );
+      
+      if (response.status === 403) {
+        alert('You do not have permission to freeze payroll runs');
+        return;
+      }
       
       if (!response.ok) throw new Error('Failed to freeze');
       
@@ -486,6 +614,11 @@ const RunDetailsPage = () => {
   };
 
   const handleUnfreeze = async () => {
+    if (!hasRole(SystemRole.PAYROLL_MANAGER) && !hasRole(SystemRole.FINANCE_STAFF)) {
+      alert('Only Payroll Managers or Finance Staff can unfreeze payroll runs');
+      return;
+    }
+    
     if (!unfreezeReason.trim()) {
       alert('Please provide a reason for unfreezing');
       return;
@@ -496,10 +629,15 @@ const RunDetailsPage = () => {
         `${API_URL}/payroll-execution/payroll-runs/${runId}/unfreeze`,
         {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ unlockReason: unfreezeReason })
         }
       );
+      
+      if (response.status === 403) {
+        alert('You do not have permission to unfreeze payroll runs');
+        return;
+      }
       
       if (!response.ok) throw new Error('Failed to unfreeze');
       
@@ -513,13 +651,27 @@ const RunDetailsPage = () => {
     }
   };
 
+  // ============ PRE-RUN ITEM APPROVAL (PAYROLL_SPECIALIST only) ============
   const handleApprovePreRunItem = async (itemId: string, itemType: string) => {
+    if (!hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+      alert('Only Payroll Specialists can approve pre-run items');
+      return;
+    }
+    
     try {
       const endpoint = itemType === 'Signing Bonus' 
         ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/approve`
         : `${API_URL}/payroll-execution/benefits/${itemId}/approve`;
       
-      const response = await fetch(endpoint, { method: 'PATCH' });
+      const response = await fetch(endpoint, { 
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      
+      if (response.status === 403) {
+        alert('You do not have permission to approve this item');
+        return;
+      }
       
       if (!response.ok) throw new Error('Failed to approve item');
       
@@ -531,12 +683,25 @@ const RunDetailsPage = () => {
   };
 
   const handleRejectPreRunItem = async (itemId: string, itemType: string) => {
+    if (!hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+      alert('Only Payroll Specialists can reject pre-run items');
+      return;
+    }
+    
     try {
       const endpoint = itemType === 'Signing Bonus' 
         ? `${API_URL}/payroll-execution/signing-bonuses/${itemId}/reject`
         : `${API_URL}/payroll-execution/benefits/${itemId}/reject`;
       
-      const response = await fetch(endpoint, { method: 'PATCH' });
+      const response = await fetch(endpoint, { 
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      
+      if (response.status === 403) {
+        alert('You do not have permission to reject this item');
+        return;
+      }
       
       if (!response.ok) throw new Error('Failed to reject item');
       
@@ -554,7 +719,8 @@ const RunDetailsPage = () => {
 
     const normalizedStatus = run.status.toUpperCase().replace(/\s+/g, '_');
 
-    if (role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT') {
+    // PAYROLL_SPECIALIST can publish DRAFT
+    if (hasRole(SystemRole.PAYROLL_SPECIALIST) && normalizedStatus === 'DRAFT') {
       return (
         <button
           onClick={handlePublish}
@@ -566,7 +732,8 @@ const RunDetailsPage = () => {
       );
     }
 
-    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW') {
+    // PAYROLL_MANAGER can approve/reject UNDER_REVIEW
+    if (hasRole(SystemRole.PAYROLL_MANAGER) && normalizedStatus === 'UNDER_REVIEW') {
       return (
         <div className="flex gap-2">
           <button
@@ -587,7 +754,8 @@ const RunDetailsPage = () => {
       );
     }
 
-    if (role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL') {
+    // FINANCE_STAFF can approve/reject PENDING_FINANCE_APPROVAL
+    if (hasRole(SystemRole.FINANCE_STAFF) && normalizedStatus === 'PENDING_FINANCE_APPROVAL') {
       return (
         <div className="flex gap-2">
           <button
@@ -608,7 +776,8 @@ const RunDetailsPage = () => {
       );
     }
 
-    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED') {
+    // PAYROLL_MANAGER or FINANCE_STAFF can freeze APPROVED
+    if ((hasRole(SystemRole.PAYROLL_MANAGER)) && normalizedStatus === 'APPROVED') {
       return (
         <button
           onClick={handleFreeze}
@@ -620,7 +789,8 @@ const RunDetailsPage = () => {
       );
     }
 
-    if (role === 'PAYROLL_MANAGER' && normalizedStatus === 'LOCKED') {
+    // PAYROLL_MANAGER or FINANCE_STAFF can unfreeze LOCKED
+    if ((hasRole(SystemRole.PAYROLL_MANAGER) || hasRole(SystemRole.FINANCE_STAFF)) && normalizedStatus === 'LOCKED') {
       return (
         <button
           onClick={() => setShowUnfreezeModal(true)}
@@ -662,14 +832,57 @@ const RunDetailsPage = () => {
     }
   };
 
-  // Check if current role can resolve exceptions
-  const canResolveExceptions = role === 'PAYROLL_MANAGER' && 
+  // Check if current user can resolve exceptions (PAYROLL_SPECIALIST)
+  const canResolveExceptions = hasRole(SystemRole.PAYROLL_SPECIALIST) && 
     run?.status?.toUpperCase().replace(/\s+/g, '_') === 'UNDER_REVIEW';
 
-  // Check if employee has unresolved exception
   const hasUnresolvedException = (emp: EmployeePayrollDetail) => {
     return !!emp.exceptions && !resolvedEmployees.has(emp._id);
   };
+
+  // Get permission summary for current user
+  const getPermissionSummary = () => {
+    if (!run) return '';
+    const normalizedStatus = run.status.toUpperCase().replace(/\s+/g, '_');
+    
+    const permissions: string[] = [];
+    
+    if (hasRole(SystemRole.PAYROLL_SPECIALIST)) {
+      if (normalizedStatus === 'DRAFT') permissions.push('✅ Can publish');
+      permissions.push('✅ Can resolve exceptions');
+      permissions.push('✅ Can manage pre-run items');
+    }
+    
+    if (hasRole(SystemRole.PAYROLL_MANAGER)) {
+      if (normalizedStatus === 'UNDER_REVIEW') permissions.push('✅ Can approve/reject');
+      if (normalizedStatus === 'APPROVED') permissions.push('✅ Can freeze');
+      if (normalizedStatus === 'LOCKED') permissions.push('✅ Can unfreeze');
+    }
+    
+    if (hasRole(SystemRole.FINANCE_STAFF)) {
+      if (normalizedStatus === 'PENDING_FINANCE_APPROVAL') permissions.push('✅ Can approve/reject');
+      if (normalizedStatus === 'APPROVED') permissions.push('✅ Can freeze');
+      if (normalizedStatus === 'LOCKED') permissions.push('✅ Can unfreeze');
+    }
+    
+    return permissions.length > 0 ? permissions.join(' | ') : '⚠️ View only';
+  };
+
+  // Loading states
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null; // Will redirect to login
+  }
 
   if (loading) {
     return (
@@ -685,15 +898,18 @@ const RunDetailsPage = () => {
   if (error || !run) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto text-center py-12">
-          <AlertCircle size={48} className="mx-auto text-gray-400 mb-4" />
-          <p className="text-lg text-gray-500">{error || 'Payroll run not found'}</p>
-          <button
-            onClick={() => window.history.back()}
-            className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            ← Back to All Runs
-          </button>
+        <div className="max-w-7xl mx-auto">
+          <UserInfoBar />
+          <div className="text-center py-12">
+            <AlertCircle size={48} className="mx-auto text-gray-400 mb-4" />
+            <p className="text-lg text-gray-500">{error || 'Payroll run not found'}</p>
+            <button
+              onClick={() => router.back()}
+              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              ← Back to All Runs
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -710,32 +926,21 @@ const RunDetailsPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <RoleSwitcher currentRole={role} onRoleChange={setRole} />
-      
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Role Info Banner */}
+        {/* User Info Bar */}
+        <UserInfoBar />
+        
+        {/* Permissions Info Banner */}
         <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users size={18} className="text-blue-600" />
               <span className="text-sm font-semibold text-blue-900">
-                Current Role: {role.replace(/_/g, ' ')}
+                Your Roles: {user?.roles.join(', ').replace(/_/g, ' ')}
               </span>
             </div>
             <span className="text-xs text-blue-700">
-              Status: {run.status} | 
-              {role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT' && ' ✅ Can publish'}
-              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW' && ' ✅ Can approve/reject & resolve exceptions'}
-              {role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL' && ' ✅ Can approve/reject'}
-              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED' && ' ✅ Can freeze'}
-              {role === 'PAYROLL_MANAGER' && normalizedStatus === 'LOCKED' && ' ✅ Can unfreeze'}
-              {!(
-                (role === 'PAYROLL_SPECIALIST' && normalizedStatus === 'DRAFT') ||
-                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'UNDER_REVIEW') ||
-                (role === 'FINANCE_STAFF' && normalizedStatus === 'PENDING_FINANCE_APPROVAL') ||
-                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'APPROVED') ||
-                (role === 'PAYROLL_MANAGER' && normalizedStatus === 'LOCKED')
-              ) && ' ⚠️ View only'}
+              Status: {run.status} | {getPermissionSummary()}
             </span>
           </div>
         </div>
@@ -743,7 +948,7 @@ const RunDetailsPage = () => {
         {/* Header */}
         <div>
           <button
-            onClick={() => window.history.back()}
+            onClick={() => router.back()}
             className="text-blue-600 hover:text-blue-800 mb-4 text-sm flex items-center gap-2"
           >
             <ArrowLeft size={16} />
@@ -770,17 +975,17 @@ const RunDetailsPage = () => {
         </div>
 
         {/* Status-specific alerts */}
-        {normalizedStatus === 'UNDER_REVIEW' && role === 'PAYROLL_MANAGER' && (
+        {normalizedStatus === 'UNDER_REVIEW' && hasRole(SystemRole.PAYROLL_MANAGER) && (
           <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
             <p className="font-semibold text-yellow-900">⚠️ Manager Action Required</p>
             <p className="text-sm text-yellow-700">
               This payroll is waiting for your approval. 
-              {exceptionsCount > 0 && ` There are ${exceptionsCount} exception(s) that need your attention.`}
+              {exceptionsCount > 0 && ` There are ${exceptionsCount} exception(s) that need attention.`}
             </p>
           </div>
         )}
 
-        {normalizedStatus === 'PENDING_FINANCE_APPROVAL' && role === 'FINANCE_STAFF' && (
+        {normalizedStatus === 'PENDING_FINANCE_APPROVAL' && hasRole(SystemRole.FINANCE_STAFF) && (
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
             <p className="font-semibold text-blue-900">💼 Finance Action Required</p>
             <p className="text-sm text-blue-700">
@@ -789,7 +994,7 @@ const RunDetailsPage = () => {
           </div>
         )}
 
-        {normalizedStatus === 'APPROVED' && role === 'PAYROLL_MANAGER' && (
+        {normalizedStatus === 'APPROVED' && (hasRole(SystemRole.PAYROLL_MANAGER) || hasRole(SystemRole.FINANCE_STAFF)) && (
           <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
             <p className="font-semibold text-green-900">✅ Ready to Freeze</p>
             <p className="text-sm text-green-700">
@@ -810,17 +1015,17 @@ const RunDetailsPage = () => {
           </div>
         )}
 
-        {/* Exception Alert for Manager */}
+        {/* Exception Alert for Specialist */}
         {canResolveExceptions && exceptionsCount > 0 && (
           <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded">
             <div className="flex items-start gap-3">
               <AlertTriangle className="text-orange-600 flex-shrink-0 mt-0.5" size={20} />
               <div>
                 <p className="font-semibold text-orange-900">
-                  {exceptionsCount} Exception{exceptionsCount !== 1 ? 's' : ''} Require Your Attention
+                  {exceptionsCount} Exception{exceptionsCount !== 1 ? 's' : ''} Require Attention
                 </p>
                 <p className="text-sm text-orange-700">
-                  As a Payroll Manager, you can resolve these exceptions before approving. 
+                  As a Payroll Specialist, you can resolve these exceptions. 
                   Click on an employee row to view details and resolve.
                 </p>
               </div>
@@ -900,16 +1105,18 @@ const RunDetailsPage = () => {
                   </span>
                 )}
               </button>
-              <button
-                onClick={() => setActiveTab('preruns')}
-                className={`px-6 py-3 font-medium text-sm transition ${
-                  activeTab === 'preruns'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Pre-Run Items ({preRunItems.length})
-              </button>
+              {hasRole(SystemRole.PAYROLL_SPECIALIST) && (
+                <button
+                  onClick={() => setActiveTab('preruns')}
+                  className={`px-6 py-3 font-medium text-sm transition ${
+                    activeTab === 'preruns'
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Pre-Run Items ({preRunItems.length})
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('history')}
                 className={`px-6 py-3 font-medium text-sm transition ${
@@ -953,8 +1160,8 @@ const RunDetailsPage = () => {
                     employees.map((emp) => {
                       const employee = emp.employeeId;
                       const bankStatus = emp.bankStatus || 'missing';
-                      const empPayrollDetailId = emp._id; // The employeePayrollDetails document ID
-                      const empProfileId = employee?._id; // The employee profile ID
+                      const empPayrollDetailId = emp._id;
+                      const empProfileId = employee?._id;
                       const isExpanded = expandedRows.has(empPayrollDetailId);
                       const hasException = hasUnresolvedException(emp);
                       const isResolved = resolvedEmployees.has(empPayrollDetailId);
@@ -1045,12 +1252,6 @@ const RunDetailsPage = () => {
                                       {emp.exceptions}
                                     </p>
                                   </div>
-
-                                  {/* Debug info - remove in production */}
-                                  <div className="bg-gray-100 p-2 rounded mb-4 text-xs text-gray-600">
-                                    <p>Debug: PayrollDetail ID: {empPayrollDetailId}</p>
-                                    <p>Debug: Employee Profile ID: {empProfileId}</p>
-                                  </div>
                                   
                                   {resolvingException === empPayrollDetailId ? (
                                     <div className="space-y-3">
@@ -1112,8 +1313,8 @@ const RunDetailsPage = () => {
             </div>
           )}
 
-          {/* Pre-Run Items Tab */}
-          {activeTab === 'preruns' && (
+          {/* Pre-Run Items Tab (PAYROLL_SPECIALIST only) */}
+          {activeTab === 'preruns' && hasRole(SystemRole.PAYROLL_SPECIALIST) && (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
@@ -1254,7 +1455,7 @@ const RunDetailsPage = () => {
               />
               <div className="flex gap-2">
                 <button
-                  onClick={role === 'PAYROLL_MANAGER' ? handleManagerReject : handleFinanceReject}
+                  onClick={hasRole(SystemRole.PAYROLL_MANAGER) ? handleManagerReject : handleFinanceReject}
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                 >
                   Confirm Rejection
