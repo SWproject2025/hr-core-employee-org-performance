@@ -14,6 +14,8 @@ import { PerformanceModule } from './performance/performance.module';
 import { PayrollConfigurationModule } from './payroll-configuration/payroll-configuration.module';
 import { PayrollExecutionModule } from './payroll-execution/payroll-execution.module';
 import { AuthModule } from './auth/auth.module';
+import { EmailModule } from './Common/email/email.module';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
@@ -32,6 +34,8 @@ import { ConfigModule } from '@nestjs/config';
         };
       },
     }),
+    ScheduleModule.forRoot(),
+    EmailModule,
     AuthModule,
     TimeManagementModule,
     RecruitmentModule,

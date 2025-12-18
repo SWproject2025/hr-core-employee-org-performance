@@ -1,582 +1,387 @@
-"use client"
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, Calendar, Settings, FileText, AlertCircle } from 'lucide-react';
+'use client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { useState, useEffect } from 'react';
+import leavesService from '@/lib/leavesService';
 
-interface LeaveType {
-  _id: string;
-  code: string;
-  name: string;
-  categoryId: string;
-  description?: string;
-  paid: boolean;
-  deductible: boolean;
-  requiresAttachment: boolean;
-  minTenureMonths?: number;
-  maxDurationDays?: number;
-}
+export default function LeaveConfigPage() {
+  const [activeTab, setActiveTab] = useState<'categories' | 'policies' | 'blocks'>('categories');
+  const [categories, setCategories] = useState<any[]>([]);
+  const [blockPeriods, setBlockPeriods] = useState<any[]>([]);
+  const [policies, setPolicies] = useState<any[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
+  
+  const [loading, setLoading] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-interface LeavePolicy {
-  _id: string;
-  leaveTypeId: string;
-  accrualMethod: string;
-  monthlyRate: number;
-  yearlyRate: number;
-  carryForwardAllowed: boolean;
-  maxCarryForward: number;
-  roundingRule: string;
-  minNoticeDays: number;
-  maxConsecutiveDays?: number;
-}
-
-const LeavePolicyConfigPage = () => {
-  const [activeTab, setActiveTab] = useState<'types' | 'policies' | 'calendar'>('types');
-  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
-  const [leavePolicies, setLeavePolicies] = useState<LeavePolicy[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<'create' | 'edit'>('create');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-
-  const [leaveTypeForm, setLeaveTypeForm] = useState({
-    code: '',
+  const [categoryForm, setCategoryForm] = useState({ code: '', name: '', description: '' });
+  const [blockForm, setBlockForm] = useState({
     name: '',
-    categoryId: '',
-    description: '',
-    paid: true,
-    deductible: true,
-    requiresAttachment: false,
-    minTenureMonths: 0,
-    maxDurationDays: 0
+    startDate: '',
+    endDate: '',
+    reason: '',
+    exemptLeaveTypes: [] as string[],
   });
-
   const [policyForm, setPolicyForm] = useState({
-    leaveTypeId: '',
-    accrualMethod: 'monthly',
-    monthlyRate: 0,
-    yearlyRate: 0,
-    carryForwardAllowed: false,
-    maxCarryForward: 0,
-    roundingRule: 'none',
-    minNoticeDays: 0,
-    maxConsecutiveDays: 0
+      leaveTypeId: '',
+      accrualMethod: 'MONTHLY',
+      monthlyRate: 0,
+      yearlyRate: 0,
+      carryForwardAllowed: false,
+      maxCarryForward: 0
   });
 
   useEffect(() => {
-    fetchData();
+    loadData();
   }, [activeTab]);
 
-  const getToken = () => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('token') || '';
-    }
-    return '';
-  };
-
-  const fetchData = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      
-      if (activeTab === 'types') {
-        const response = await fetch(`${API_URL}/leaves/types`, {
-          headers: { Authorization: `Bearer ${getToken()}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setLeaveTypes(data.leaveTypes || []);
-        }
+      if (activeTab === 'categories') {
+        const data = await leavesService.getLeaveCategories();
+        setCategories(data || []);
+      } else if (activeTab === 'blocks') {
+        const data = await leavesService.getBlockPeriods();
+        setBlockPeriods(data || []);
       } else if (activeTab === 'policies') {
-        // Fetch policies - placeholder
-        // In production, add proper API endpoint
+          const [policiesData, typesData] = await Promise.all([
+              leavesService.getLeavePolicies(),
+              leavesService.getLeaveTypes()
+          ]);
+          setPolicies(policiesData || []);
+          console.log(typesData); 
+          setLeaveTypes(typesData.leaveTypes || []); 
+          // typesData structure depends on backend. service says: { leaveTypes: any[] }
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateLeaveType = async () => {
+  const handleAddCategory = async () => {
     try {
-      const response = await fetch(`${API_URL}/leaves/admin/types`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`
-        },
-        body: JSON.stringify(leaveTypeForm)
-      });
-
-      if (!response.ok) throw new Error('Failed to create leave type');
-
-      alert('Leave type created successfully!');
-      setShowModal(false);
-      resetForms();
-      fetchData();
+      await leavesService.createLeaveCategory(categoryForm);
+      setNotification({ message: 'Category added successfully', type: 'success' });
+      setShowAddModal(false);
+      setCategoryForm({ code: '', name: '', description: '' });
+      loadData();
     } catch (error: any) {
-      alert(error.message || 'Failed to create leave type');
+      setNotification({ message: error.message, type: 'error' });
     }
   };
 
-  const handleCreatePolicy = async () => {
+  const handleAddBlockPeriod = async () => {
     try {
-      const response = await fetch(`${API_URL}/leaves/admin/policies`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`
-        },
-        body: JSON.stringify(policyForm)
+      await leavesService.createBlockPeriod({
+          ...blockForm,
+          startDate: new Date(blockForm.startDate),
+          endDate: new Date(blockForm.endDate)
       });
-
-      if (!response.ok) throw new Error('Failed to create policy');
-
-      alert('Leave policy created successfully!');
-      setShowModal(false);
-      resetForms();
-      fetchData();
+      setNotification({ message: 'Block period added successfully', type: 'success' });
+      setShowAddModal(false);
+      setBlockForm({ name: '', startDate: '', endDate: '', reason: '', exemptLeaveTypes: [] });
+      loadData();
     } catch (error: any) {
-      alert(error.message || 'Failed to create policy');
+      setNotification({ message: error.message, type: 'error' });
     }
   };
 
-  const resetForms = () => {
-    setLeaveTypeForm({
-      code: '',
-      name: '',
-      categoryId: '',
-      description: '',
-      paid: true,
-      deductible: true,
-      requiresAttachment: false,
-      minTenureMonths: 0,
-      maxDurationDays: 0
-    });
-    setPolicyForm({
-      leaveTypeId: '',
-      accrualMethod: 'monthly',
-      monthlyRate: 0,
-      yearlyRate: 0,
-      carryForwardAllowed: false,
-      maxCarryForward: 0,
-      roundingRule: 'none',
-      minNoticeDays: 0,
-      maxConsecutiveDays: 0
-    });
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">Leave Policy Configuration</h1>
-            <p className="text-gray-500 mt-1">Manage leave types, policies, and organizational calendar</p>
-          </div>
-          <button
-            onClick={() => {
-              setModalType('create');
-              setShowModal(true);
-            }}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition shadow-md"
-          >
-            <Plus size={20} />
-            Add New
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="bg-white rounded-lg shadow-md">
-          <div className="border-b border-gray-200">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('types')}
-                className={`px-6 py-4 font-medium transition flex items-center gap-2 ${
-                  activeTab === 'types'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <FileText size={18} />
-                Leave Types
-              </button>
-              <button
-                onClick={() => setActiveTab('policies')}
-                className={`px-6 py-4 font-medium transition flex items-center gap-2 ${
-                  activeTab === 'policies'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Settings size={18} />
-                Leave Policies
-              </button>
-              <button
-                onClick={() => setActiveTab('calendar')}
-                className={`px-6 py-4 font-medium transition flex items-center gap-2 ${
-                  activeTab === 'calendar'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Calendar size={18} />
-                Calendar Setup
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6">
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-4 text-gray-600">Loading...</p>
-              </div>
-            ) : activeTab === 'types' ? (
-              <LeaveTypesTab types={leaveTypes} />
-            ) : activeTab === 'policies' ? (
-              <LeavePoliciesTab policies={leavePolicies} />
-            ) : (
-              <CalendarTab />
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-2xl font-bold">
-                {modalType === 'create' ? 'Create' : 'Edit'} {activeTab === 'types' ? 'Leave Type' : 'Leave Policy'}
-              </h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="p-6">
-              {activeTab === 'types' ? (
-                <LeaveTypeForm
-                  form={leaveTypeForm}
-                  setForm={setLeaveTypeForm}
-                  onSubmit={handleCreateLeaveType}
-                  onCancel={() => setShowModal(false)}
-                />
-              ) : (
-                <LeavePolicyForm
-                  form={policyForm}
-                  setForm={setPolicyForm}
-                  leaveTypes={leaveTypes}
-                  onSubmit={handleCreatePolicy}
-                  onCancel={() => setShowModal(false)}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const LeaveTypesTab = ({ types }: { types: LeaveType[] }) => {
-  if (types.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <FileText size={48} className="mx-auto text-gray-400 mb-4" />
-        <p className="text-lg text-gray-500">No leave types configured</p>
-        <p className="text-sm text-gray-400 mt-2">Click "Add New" to create your first leave type</p>
-      </div>
-    );
+  const handleSavePolicy = async () => {
+      try {
+          await leavesService.createLeavePolicy(policyForm);
+          setNotification({ message: 'Policy saved successfully', type: 'success' });
+          setShowAddModal(false);
+          setPolicyForm({
+            leaveTypeId: '',
+            accrualMethod: 'MONTHLY',
+            monthlyRate: 0,
+            yearlyRate: 0,
+            carryForwardAllowed: false,
+            maxCarryForward: 0
+          });
+          loadData();
+      } catch (error: any) {
+          setNotification({ message: error.message, type: 'error' });
+      }
   }
 
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this category?')) return;
+    try {
+      await leavesService.deleteLeaveCategory(id);
+      setNotification({ message: 'Category deleted successfully', type: 'success' });
+      loadData();
+    } catch (error: any) {
+      setNotification({ message: error.message, type: 'error' });
+    }
+  };
+
+  const handleDeleteBlockPeriod = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this block period?')) return;
+    try {
+      await leavesService.deleteBlockPeriod(id);
+      setNotification({ message: 'Block period deleted successfully', type: 'success' });
+      loadData();
+    } catch (error: any) {
+      setNotification({ message: error.message, type: 'error' });
+    }
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {types.map((type) => (
-        <div key={type._id} className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">{type.name}</h3>
-              <p className="text-sm text-gray-500">{type.code}</p>
-            </div>
-            <div className="flex gap-2">
-              <button className="text-blue-600 hover:text-blue-800 p-1">
-                <Edit2 size={16} />
-              </button>
-              <button className="text-red-600 hover:text-red-800 p-1">
-                <Trash2 size={16} />
-              </button>
-            </div>
-          </div>
-
-          {type.description && (
-            <p className="text-sm text-gray-600 mb-4">{type.description}</p>
-          )}
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Paid</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                type.paid ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-              }`}>
-                {type.paid ? 'Yes' : 'No'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Deductible</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                type.deductible ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-              }`}>
-                {type.deductible ? 'Yes' : 'No'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Requires Attachment</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                type.requiresAttachment ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
-              }`}>
-                {type.requiresAttachment ? 'Yes' : 'No'}
-              </span>
-            </div>
-            {type.minTenureMonths && type.minTenureMonths > 0 && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Min Tenure</span>
-                <span className="font-semibold">{type.minTenureMonths} months</span>
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const LeavePoliciesTab = ({ policies }: { policies: LeavePolicy[] }) => {
-  return (
-    <div className="text-center py-12">
-      <Settings size={48} className="mx-auto text-gray-400 mb-4" />
-      <p className="text-lg text-gray-500">Leave policies configuration</p>
-      <p className="text-sm text-gray-400 mt-2">Configure accrual rules, carry forward, and entitlement policies</p>
-    </div>
-  );
-};
-
-const CalendarTab = () => {
-  return (
-    <div className="space-y-6">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-          <AlertCircle size={20} />
-          Calendar Configuration
-        </h3>
-        <p className="text-sm text-blue-800">
-          Configure organizational holidays, blocked periods, and working days for accurate leave calculations.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="font-semibold text-gray-800 mb-4">Public Holidays</h3>
-          <p className="text-sm text-gray-500 mb-4">Add national and company holidays that won't count as leave days</p>
-          <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition">
-            Add Holiday
-          </button>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-6">
-          <h3 className="font-semibold text-gray-800 mb-4">Blocked Periods</h3>
-          <p className="text-sm text-gray-500 mb-4">Define periods when leave requests cannot be submitted</p>
-          <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition">
-            Add Blocked Period
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const LeaveTypeForm = ({ form, setForm, onSubmit, onCancel }: any) => {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Code *</label>
-          <input
-            type="text"
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="AL"
-          />
+          <h1 className="text-3xl font-bold text-gray-900">Leave Configuration</h1>
+          <p className="text-gray-600 mt-1">Manage leave policies, categories, and restrictions</p>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
-          <input
-            type="text"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="Annual Leave"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-        <textarea
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          rows={3}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          placeholder="Describe this leave type..."
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={form.paid}
-            onChange={(e) => setForm({ ...form, paid: e.target.checked })}
-            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label className="text-sm font-medium text-gray-700">Paid Leave</label>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={form.deductible}
-            onChange={(e) => setForm({ ...form, deductible: e.target.checked })}
-            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label className="text-sm font-medium text-gray-700">Deductible</label>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={form.requiresAttachment}
-          onChange={(e) => setForm({ ...form, requiresAttachment: e.target.checked })}
-          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-        />
-        <label className="text-sm font-medium text-gray-700">Requires Attachment</label>
-      </div>
-
-      <div className="flex gap-3 pt-4">
         <button
-          onClick={onCancel}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+          onClick={() => setShowAddModal(true)}
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium shadow"
         >
-          Cancel
-        </button>
-        <button
-          onClick={onSubmit}
-          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-        >
-          Create Leave Type
+          + Add {activeTab === 'categories' ? 'Category' : activeTab === 'blocks' ? 'Block Period' : 'Policy'}
         </button>
       </div>
-    </div>
-  );
-};
 
-const LeavePolicyForm = ({ form, setForm, leaveTypes, onSubmit, onCancel }: any) => {
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Leave Type *</label>
-        <select
-          value={form.leaveTypeId}
-          onChange={(e) => setForm({ ...form, leaveTypeId: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      {/* Notification */}
+      {notification && (
+        <div
+          className={`p-4 rounded-lg ${
+            notification.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}
         >
-          <option value="">Select leave type</option>
-          {leaveTypes.map((type: LeaveType) => (
-            <option key={type._id} value={type._id}>
-              {type.name} ({type.code})
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Accrual Method *</label>
-        <select
-          value={form.accrualMethod}
-          onChange={(e) => setForm({ ...form, accrualMethod: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="monthly">Monthly</option>
-          <option value="yearly">Yearly</option>
-          <option value="per-term">Per Term</option>
-        </select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Monthly Rate</label>
-          <input
-            type="number"
-            step="0.1"
-            value={form.monthlyRate}
-            onChange={(e) => setForm({ ...form, monthlyRate: parseFloat(e.target.value) })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Yearly Rate</label>
-          <input
-            type="number"
-            step="0.1"
-            value={form.yearlyRate}
-            onChange={(e) => setForm({ ...form, yearlyRate: parseFloat(e.target.value) })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={form.carryForwardAllowed}
-          onChange={(e) => setForm({ ...form, carryForwardAllowed: e.target.checked })}
-          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-        />
-        <label className="text-sm font-medium text-gray-700">Allow Carry Forward</label>
-      </div>
-
-      {form.carryForwardAllowed && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Max Carry Forward (days)</label>
-          <input
-            type="number"
-            value={form.maxCarryForward}
-            onChange={(e) => setForm({ ...form, maxCarryForward: parseInt(e.target.value) })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
+          {notification.message}
         </div>
       )}
 
-      <div className="flex gap-3 pt-4">
-        <button
-          onClick={onCancel}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onSubmit}
-          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-        >
-          Create Policy
-        </button>
+      {/* Tabs */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="border-b border-gray-200">
+          <div className="flex">
+            {['categories', 'policies', 'blocks'].map((tab) => (
+                <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab as any)}
+                    className={`px-6 py-4 font-medium transition capitalize ${
+                      activeTab === tab
+                        ? 'border-b-2 border-blue-600 text-blue-600'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {tab === 'policies' ? 'Leave Policies' : tab === 'blocks' ? 'Block Periods' : tab}
+                  </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-6">
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading...</p>
+            </div>
+          ) : activeTab === 'categories' ? (
+            <CategoriesTab categories={categories} onDelete={handleDeleteCategory} />
+          ) : activeTab === 'blocks' ? (
+            <BlockPeriodsTab blockPeriods={blockPeriods} onDelete={handleDeleteBlockPeriod} />
+          ) : (
+            <PoliciesTab policies={policies} />
+          )}
+        </div>
       </div>
+
+      {/* Add Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <h2 className="text-2xl font-bold mb-4">
+              {activeTab === 'categories' ? 'Add Category' : activeTab === 'blocks' ? 'Add Block Period' : 'Configure Policy'}
+            </h2>
+
+            {activeTab === 'categories' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Code *</label>
+                  <input
+                    type="text"
+                    value={categoryForm.code}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, code: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="e.g., PAID"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+                  <input
+                    type="text"
+                    value={categoryForm.name}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                    placeholder="e.g., Paid Leave"
+                  />
+                </div>
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                   <textarea
+                     value={categoryForm.description}
+                     onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                     rows={2}
+                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                   />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'blocks' && (
+              <div className="space-y-4">
+                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+                  <input type="text" value={blockForm.name} onChange={e => setBlockForm({...blockForm, name: e.target.value})} className="w-full border px-4 py-2 rounded-lg" />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <input type="date" value={blockForm.startDate} onChange={e => setBlockForm({...blockForm, startDate: e.target.value})} className="w-full border px-4 py-2 rounded-lg" />
+                    <input type="date" value={blockForm.endDate} onChange={e => setBlockForm({...blockForm, endDate: e.target.value})} className="w-full border px-4 py-2 rounded-lg" />
+                 </div>
+                 <textarea value={blockForm.reason} onChange={e => setBlockForm({...blockForm, reason: e.target.value})} className="w-full border px-4 py-2 rounded-lg" placeholder="Reason" />
+              </div>
+            )}
+
+            {activeTab === 'policies' && (
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Leave Type *</label>
+                        <select
+                            value={policyForm.leaveTypeId}
+                            onChange={e => setPolicyForm({...policyForm, leaveTypeId: e.target.value})}
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                        >
+                            <option value="">Select Leave Type</option>
+                            {leaveTypes.map(lt => (
+                                <option key={lt._id} value={lt._id}>{lt.name} ({lt.code})</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Accrual Method</label>
+                        <select
+                            value={policyForm.accrualMethod}
+                            onChange={e => setPolicyForm({...policyForm, accrualMethod: e.target.value})}
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                        >
+                            <option value="MONTHLY">Monthly</option>
+                            <option value="YEARLY">Yearly</option>
+                            <option value="NO_ACCRUAL">No Accrual</option>
+                        </select>
+                    </div>
+                    {policyForm.accrualMethod === 'MONTHLY' && (
+                        <div>
+                             <label className="block text-sm font-medium text-gray-700 mb-2">Monthly Rate</label>
+                             <input type="number" step="0.1" value={policyForm.monthlyRate} onChange={e => setPolicyForm({...policyForm, monthlyRate: parseFloat(e.target.value)})} className="w-full border px-4 py-2 rounded-lg" />
+                        </div>
+                    )}
+                    {policyForm.accrualMethod === 'YEARLY' && (
+                         <div>
+                             <label className="block text-sm font-medium text-gray-700 mb-2">Yearly Rate</label>
+                             <input type="number" step="0.5" value={policyForm.yearlyRate} onChange={e => setPolicyForm({...policyForm, yearlyRate: parseFloat(e.target.value)})} className="w-full border px-4 py-2 rounded-lg" />
+                        </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={policyForm.carryForwardAllowed} onChange={e => setPolicyForm({...policyForm, carryForwardAllowed: e.target.checked})} id="carryForward" />
+                        <label htmlFor="carryForward" className="text-sm font-medium text-gray-700">Allow Carry Forward</label>
+                    </div>
+                    {policyForm.carryForwardAllowed && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Max Carry Forward</label>
+                            <input type="number" value={policyForm.maxCarryForward} onChange={e => setPolicyForm({...policyForm, maxCarryForward: parseFloat(e.target.value)})} className="w-full border px-4 py-2 rounded-lg" />
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={activeTab === 'categories' ? handleAddCategory : activeTab === 'blocks' ? handleAddBlockPeriod : handleSavePolicy}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-medium"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
 
-export default LeavePolicyConfigPage;
+function CategoriesTab({ categories, onDelete }: any) {
+    if (categories.length === 0) return <div className="text-center py-12 text-gray-500">No categories.</div>;
+    return (
+        <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+                <tr><th>Code</th><th>Name</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                {categories.map((c: any) => (
+                    <tr key={c._id} className="border-b"><td className="p-4">{c.code}</td><td className="p-4">{c.name}</td><td className="p-4"><button onClick={() => onDelete(c._id)} className="text-red-500">Delete</button></td></tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
+function BlockPeriodsTab({ blockPeriods, onDelete }: any) {
+    if (blockPeriods.length === 0) return <div className="text-center py-12 text-gray-500">No block periods.</div>;
+    return (
+      <div className="space-y-4">
+        {blockPeriods.map((p: any) => (
+            <div key={p._id} className="border p-4 rounded flex justify-between">
+                <div>
+                   <h3 className="font-bold">{p.name}</h3>
+                   <p className="text-sm text-gray-500">{new Date(p.startDate).toLocaleDateString()} - {new Date(p.endDate).toLocaleDateString()}</p>
+                </div>
+                <button onClick={() => onDelete(p._id)} className="text-red-500">Delete</button>
+            </div>
+        ))}
+      </div>
+    );
+}
+
+function PoliciesTab({ policies }: any) {
+    if (policies.length === 0) return <div className="text-center py-12 text-gray-500">No policies configured. Add one to start.</div>;
+    return (
+        <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+                <tr>
+                    <th className="px-6 py-3 text-left">Leave Type</th>
+                    <th className="px-6 py-3 text-left">Accrual Method</th>
+                    <th className="px-6 py-3 text-left">Rate</th>
+                    <th className="px-6 py-3 text-left">Carry Forward</th>
+                </tr>
+            </thead>
+            <tbody>
+                {policies.map((p: any) => (
+                    <tr key={p._id} className="hover:bg-gray-50 border-b">
+                        <td className="px-6 py-4 font-medium">{p.leaveTypeId?.name} ({p.leaveTypeId?.code})</td>
+                        <td className="px-6 py-4">{p.accrualMethod}</td>
+                        <td className="px-6 py-4">
+                            {p.accrualMethod === 'MONTHLY' ? `${p.monthlyRate}/month` : 
+                             p.accrualMethod === 'YEARLY' ? `${p.yearlyRate}/year` : '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                            {p.carryForwardAllowed ? `Yes (Max: ${p.maxCarryForward})` : 'No'}
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
