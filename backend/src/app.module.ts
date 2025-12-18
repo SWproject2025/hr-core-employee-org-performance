@@ -13,18 +13,9 @@ import { OrganizationStructureModule } from './organization-structure/organizati
 import { PerformanceModule } from './performance/performance.module';
 import { PayrollConfigurationModule } from './payroll-configuration/payroll-configuration.module';
 import { PayrollExecutionModule } from './payroll-execution/payroll-execution.module';
-import { AuthModule } from './auth/auth.module';
-import { EmailModule } from './Common/email/email.module';
-import { ScheduleModule } from '@nestjs/schedule';
-import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
-    // Load environment variables
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: '.env',
-    }),
     // ✅ REPLACE MongooseModule.forRoot with forRootAsync
     MongooseModule.forRootAsync({
       useFactory: () => {
@@ -34,9 +25,6 @@ import { ConfigModule } from '@nestjs/config';
         };
       },
     }),
-    ScheduleModule.forRoot(),
-    EmailModule,
-    AuthModule,
     TimeManagementModule,
     RecruitmentModule,
     LeavesModule,
@@ -50,4 +38,4 @@ import { ConfigModule } from '@nestjs/config';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

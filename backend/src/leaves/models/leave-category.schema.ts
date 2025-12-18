@@ -6,9 +6,6 @@ export type LeaveCategoryDocument = HydratedDocument<LeaveCategory>;
 @Schema({ timestamps: true })
 export class LeaveCategory {
   @Prop({ required: true, unique: true })
-  code: string;
-
-  @Prop({ required: true })
   name: string;
 
   @Prop()

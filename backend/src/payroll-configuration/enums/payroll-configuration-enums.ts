@@ -6,7 +6,7 @@ export enum ConfigStatus {
 }
 
 export enum PolicyType {
-  DEDUCTION = 'Deduction',
+    DEDUCTION = "Deduction",
     ALLOWANCE = "Allowance",
     BENEFIT = "Benefit",
     MISCONDUCT = "Misconduct",

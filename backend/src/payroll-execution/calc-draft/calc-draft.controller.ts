@@ -14,8 +14,6 @@ export class CalcDraftController {
     return this.calcDraftService.createPayrollRun(createCalcDraftDto);
   }
 
-  
-
   @Post('draft/:id/process')
   async processDraftGeneration(
     @Param('id') id: string,

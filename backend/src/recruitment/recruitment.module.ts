@@ -13,6 +13,7 @@ import { Referral, ReferralSchema } from './models/referral.schema';
 import { Offer, OfferSchema } from './models/offer.schema';
 import { Contract, ContractSchema } from './models/contract.schema';
 import { Document, DocumentSchema } from './models/document.schema';
+import { Onboarding, OnboardingSchema } from './models/onboarding.schema';
 import { TerminationRequest, TerminationRequestSchema } from './models/termination-request.schema';
 import { ClearanceChecklist, ClearanceChecklistSchema } from './models/clearance-checklist.schema';
 
@@ -31,6 +32,7 @@ import { EmployeeProfileModule } from '../employee-profile/employee-profile.modu
       { name: Offer.name, schema: OfferSchema },
       { name: Contract.name, schema: ContractSchema },
       { name: Document.name, schema: DocumentSchema },
+      { name: Onboarding.name, schema: OnboardingSchema },
       { name: TerminationRequest.name, schema: TerminationRequestSchema },
       { name: ClearanceChecklist.name, schema: ClearanceChecklistSchema },
     ]),

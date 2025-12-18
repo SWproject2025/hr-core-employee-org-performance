@@ -620,7 +620,7 @@ export class PayrollExecutionService {
       );
     }
 
-    run.status = PayRollStatus.UNDER_REVIEW;
+    run.status = PayRollStatus.UNDER_REVIEW; // Fixed: Use enum value
     if (run) {
       await run.save();
     } else {
@@ -710,62 +710,16 @@ export class PayrollExecutionService {
   }
 
   async freezePayroll(runId: string, reason?: string) {
-    try {
-      console.log('🔒 Starting freeze for runId:', runId);
-      
-      const runObjectId = await this._resolveRunObjectId(runId);
-      console.log('✅ Resolved ObjectId:', runObjectId);
-      
-      const run = await this.payrollRunsModel.findById(runObjectId);
-      if (!run) throw new NotFoundException('Payroll run not found');
-      
-      console.log('✅ Run found, status:', run.status);
-      
-      // Check if run is in correct status
-      if (run.status !== PayRollStatus.APPROVED) {
-        throw new BadRequestException(
-          `Cannot freeze payroll. Current status: ${run.status}. Must be APPROVED.`
-        );
-      }
-      
-      // Check if payslips already exist
-      const existingPayslips = await this.payslipModel.countDocuments({
-        payrollRunId: runObjectId
-      });
-      
-      console.log('📄 Existing payslips:', existingPayslips);
-      
-      let payslipsGenerated;
-      
-      if (existingPayslips === 0) {
-        console.log('📝 Generating payslips...');
-        payslipsGenerated = await this.generatePayslips(runId); // ✅ USE runId VARIABLE
-        console.log('✅ Payslips generated:', payslipsGenerated.count);
-        
-        if (!payslipsGenerated || payslipsGenerated.count === 0) {
-          throw new BadRequestException('No payslips could be generated');
-        }
-      } else {
-        console.log('ℹ️ Payslips already exist, skipping generation');
-      }
-      
-      run.status = PayRollStatus.LOCKED;
-      if (reason) run.rejectionReason = `Locked: ${reason}`;
-      await run.save();
-      
-      console.log('✅ Payroll frozen successfully');
-      
-      return { 
-        message: 'Payroll run locked', 
-        runId: run.runId,
-        payslipsCount: existingPayslips || payslipsGenerated?.count
-      };
-      
-    } catch (error) {
-      console.error('❌ Error in freezePayroll:', error);
-      throw error;
-    }
+    const runObjectId = await this._resolveRunObjectId(runId);
+    const run = await this.payrollRunsModel.findById(runObjectId);
+    if (!run) throw new NotFoundException('Payroll run not found');
+
+    run.status = PayRollStatus.LOCKED;
+    if (reason) run.rejectionReason = `Locked: ${reason}`;
+    await run.save();
+    return { message: 'Payroll run locked', runId: run.runId };
   }
+
   async unfreezePayroll(runId: string, unlockReason?: string) {
     const runObjectId = await this._resolveRunObjectId(runId);
     const run = await this.payrollRunsModel.findById(runObjectId);
@@ -868,105 +822,69 @@ export class PayrollExecutionService {
   }
 
   async generatePayslips(runId: string) {
-    try {
-      console.log('📝 Starting payslip generation for runId:', runId);
-      
-      const runObjectId = await this._resolveRunObjectId(runId);
-      const run = await this.payrollRunsModel.findById(runObjectId);
-      if (!run) throw new NotFoundException('Payroll run not found');
-  
-      const detailsList = await this.employeePayrollDetailsModel.find({
-        payrollRunId: runObjectId,
-      });
-      
-      console.log('📊 Found employee details:', detailsList.length);
-      
-      if (!detailsList || detailsList.length === 0) {
-        throw new BadRequestException(
-          'No employee payroll details found for this run',
-        );
-      }
-  
-      const created: any[] = [];
-  
-      for (const d of detailsList) {
-        try {
-          console.log('👤 Processing employee:', d.employeeId);
-          
-          const penaltiesDoc = await this.employeePenaltiesModel.findOne({
-            employeeId: d.employeeId,
-          }).exec();
-  
-          console.log('📌 Penalties found:', !!penaltiesDoc);
-  
-          const payslipDoc: Partial<paySlip> = {
-            employeeId: d.employeeId,
-            payrollRunId: runObjectId,
-            earningsDetails: {
-              baseSalary: d.baseSalary ?? 0,
-              allowances: [],
-              // ✅ FIX: Use 'amount' instead of 'givenAmount' and add positionName
-              bonuses: d.bonus ? [{
-                amount: d.bonus,           // Use 'amount' not 'givenAmount'
-                positionName: 'Bonus',     // Add required positionName
-                givenAmount: d.bonus       // Keep givenAmount if your schema has it
-              }] : [],
-              benefits: d.benefit ? [{
-                amount: d.benefit,         // Use 'amount' not 'givenAmount'
-                positionName: 'Benefit',   // Add required positionName
-                givenAmount: d.benefit     // Keep givenAmount if your schema has it
-              }] : [],
-              refunds: [],
-            } as any,
-            deductionsDetails: {
-              taxes: [],
-              insurances: [],
-              penalties: penaltiesDoc
-                ? {
-                    employeeId: penaltiesDoc.employeeId,
-                    penalties: penaltiesDoc.penalties,
-                  }
-                : undefined,
-            } as any,
-            totalGrossSalary:
-              (d.baseSalary ?? 0) +
-              (d.allowances ?? 0) +
-              (d.bonus ?? 0) +
-              (d.benefit ?? 0),
-            totaDeductions: d.deductions ?? 0,
-            netPay: d.netPay ?? 0,
-            paymentStatus: PaySlipPaymentStatus.PENDING as any,
-          };
-  
-          const createdPayslip = await this.payslipModel.create(payslipDoc);
-          created.push(createdPayslip);
-          
-          console.log('✅ Created payslip:', createdPayslip._id);
-          
-        } catch (error) {
-          console.error('❌ Error creating payslip for employee:', d.employeeId);
-          console.error('❌ Error details:', error.message);
-          throw new BadRequestException(
-            `Failed to create payslip for employee ${d.employeeId}: ${error.message}`
-          );
-        }
-      }
-  
-      run.employees = detailsList.length;
-      run.exceptions = detailsList.filter((x) => !!x.exceptions).length;
-      run.totalnetpay = detailsList.reduce((s, x) => s + (x.netPay ?? 0), 0);
-      await run.save();
-  
-      console.log('✅ All payslips generated successfully:', created.length);
-  
-      return {
-        count: created.length,
-        payslips: created.map((p) => ({ id: p._id, employeeId: p.employeeId })),
-      };
-    } catch (error) {
-      console.error('❌ Error in generatePayslips:', error);
-      throw error;
+    const runObjectId = await this._resolveRunObjectId(runId);
+    const run = await this.payrollRunsModel.findById(runObjectId);
+    if (!run) throw new NotFoundException('Payroll run not found');
+
+    const detailsList = await this.employeePayrollDetailsModel.find({
+      payrollRunId: runObjectId,
+    });
+    if (!detailsList || detailsList.length === 0) {
+      throw new BadRequestException(
+        'No employee payroll details found for this run',
+      );
     }
+
+    const created: any[] = [];
+
+    for (const d of detailsList) {
+      const penaltiesDoc = await this.employeePenaltiesModel.findOne({
+        employeeId: d.employeeId,
+      });
+
+      const payslipDoc: Partial<paySlip> = {
+        employeeId: d.employeeId,
+        payrollRunId: runObjectId,
+        earningsDetails: {
+          baseSalary: d.baseSalary ?? 0,
+          allowances: [],
+          bonuses: d.bonus ? [{ givenAmount: d.bonus }] : [],
+          benefits: d.benefit ? [{ givenAmount: d.benefit }] : [],
+          refunds: [],
+        } as any,
+        deductionsDetails: {
+          taxes: [],
+          insurances: [],
+          penalties: penaltiesDoc
+            ? {
+                employeeId: penaltiesDoc.employeeId,
+                penalties: penaltiesDoc.penalties,
+              }
+            : undefined,
+        } as any,
+        totalGrossSalary:
+          (d.baseSalary ?? 0) +
+          (d.allowances ?? 0) +
+          (d.bonus ?? 0) +
+          (d.benefit ?? 0),
+        totaDeductions: d.deductions ?? 0,
+        netPay: d.netPay ?? 0,
+        paymentStatus: PaySlipPaymentStatus.PENDING as any,
+      };
+
+      const createdPayslip = await this.payslipModel.create(payslipDoc);
+      created.push(createdPayslip);
+    }
+
+    run.employees = detailsList.length;
+    run.exceptions = detailsList.filter((x) => !!x.exceptions).length;
+    run.totalnetpay = detailsList.reduce((s, x) => s + (x.netPay ?? 0), 0);
+    await run.save();
+
+    return {
+      count: created.length,
+      payslips: created.map((p) => ({ id: p._id, employeeId: p.employeeId })),
+    };
   }
 
   async distributePayslips(runId: string) {
@@ -1052,32 +970,17 @@ export class PayrollExecutionService {
 
   async reviewPayrollDraft(payrollRunId: string) {
     const runObjectId = await this._resolveRunObjectId(payrollRunId);
-  
+
     const run = await this.payrollRunsModel
       .findById(runObjectId)
       .populate('payrollSpecialistId', 'firstName lastName email');
-  
+
     if (!run) throw new NotFoundException('Payroll run not found');
-  
-    // DEBUG: Log the model info
-    console.log('🔍 EmployeeProfile model name:', this.employeeModel.modelName);
-    console.log('🔍 EmployeeProfile collection:', this.employeeModel.collection.name);
-    
-    // Check if we can find an employee directly
-    const testEmployee = await this.employeeModel.findOne({});
-    console.log('🔍 Test employee lookup:', testEmployee ? 'FOUND' : 'NOT FOUND');
-    if (testEmployee) {
-      console.log('🔍 Test employee name:', testEmployee.firstName, testEmployee.lastName);
-    }
-  
-    const details = await this.employeePayrollDetailsModel
-      .find({ payrollRunId: runObjectId })
-      .populate('employeeId', 'firstName lastName email code department bankName bankAccountNumber')
-      .exec();
-  
-    // DEBUG: Log first detail
-    console.log('🔍 First detail employeeId:', details[0]?.employeeId);
-  
+
+    const details = await this.employeePayrollDetailsModel.find({
+      payrollRunId: runObjectId,
+    });
+
     return {
       run,
       summary: {
@@ -1091,20 +994,18 @@ export class PayrollExecutionService {
 
   async getPayrollForManagerReview(payrollRunId: string) {
     const runObjectId = await this._resolveRunObjectId(payrollRunId);
-  
+
     const run = await this.payrollRunsModel
       .findById(runObjectId)
       .populate('payrollSpecialistId', 'firstName lastName email')
       .populate('payrollManagerId', 'firstName lastName email');
-  
+
     if (!run) throw new NotFoundException('Payroll run not found');
-  
-    // ✅ ADD .populate() HERE
-    const details = await this.employeePayrollDetailsModel
-      .find({ payrollRunId: runObjectId })
-      .populate('employeeId', 'firstName lastName email code department bankAccountDetails')
-      .exec();
-  
+
+    const details = await this.employeePayrollDetailsModel.find({
+      payrollRunId: runObjectId,
+    });
+
     return {
       runId: run.runId,
       reviewerRole: 'PAYROLL_MANAGER',
@@ -1120,7 +1021,6 @@ export class PayrollExecutionService {
       employees: details,
     };
   }
-  
 
   async getPayrollForFinanceReview(payrollRunId: string) {
     const runObjectId = await this._resolveRunObjectId(payrollRunId);

@@ -13,7 +13,7 @@ import { Roles } from '../Common/Decorators/roles.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums'; 
 
 @Controller('payroll-execution')
-@UseGuards(JwtAuthGuard, RolesGuard) // Temporarily disabled for development
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollExecutionController {
   constructor(private readonly payrollExecutionService: PayrollExecutionService) {}
 
@@ -165,7 +165,6 @@ export class PayrollExecutionController {
   async publishDraftForApproval(@Param('runId') runId: string) {
     return await this.payrollExecutionService.publishDraftForApproval(runId);
   }
-
 
   @Patch('payroll-runs/:runId/manager-approve')
   @Roles(SystemRole.PAYROLL_MANAGER)

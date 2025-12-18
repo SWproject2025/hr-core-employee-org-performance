@@ -37,7 +37,6 @@ export enum TimeExceptionType {
     SHORT_TIME = 'SHORT_TIME',
     OVERTIME_REQUEST = 'OVERTIME_REQUEST',
     MANUAL_ADJUSTMENT = 'MANUAL_ADJUSTMENT',
-    ABSENCE = 'ABSENCE',
 }
 
 export enum TimeExceptionStatus {

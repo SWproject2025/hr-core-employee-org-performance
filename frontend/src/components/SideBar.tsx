@@ -1,213 +1,184 @@
 "use client";
-import React, { useState } from 'react';
-import { LayoutDashboard, Settings, Play, User, TrendingUp, FileText, Calendar, CheckSquare, ClipboardList, DollarSign, LucideIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
 
-interface SubMenuItem {
-  id: string;
-  label: string;
-  path: string;
-  roles?: string[];
-}
+import React, { useEffect, useMemo, useState } from "react";
+import { LayoutDashboard, Settings, Play, User, TrendingUp, FileText, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-interface MenuItem {
-  id: string;
-  icon: LucideIcon;
-  label: string;
-  path?: string;
-  roles?: string[];
-  submenu?: SubMenuItem[];
+type MenuItem =
+  | {
+      id: string;
+      icon: any;
+      label: string;
+      path?: string;
+      submenu?: undefined;
+    }
+  | {
+      id: string;
+      icon: any;
+      label: string;
+      path?: undefined;
+      submenu: { id: string; label: string; path: string }[];
+    };
+
+function isOverdue(task: any) {
+  if (!task) return false;
+  if (task.status === "completed" || task.completedAt) return false;
+  if (!task.deadline) return false;
+  const d = new Date(task.deadline);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
 }
 
 export const Sidebar = () => {
-    const [activeItem, setActiveItem] = React.useState('dashboard');
-    const router = useRouter();
-    const { hasRole, isAuthenticated } = useAuth();
+  const router = useRouter();
+  const [activeItem, setActiveItem] = useState("dashboard");
 
-    // Helper function to check if menu item should be shown
-    const shouldShow = (requiredRoles?: string[]) => {
-      if (!isAuthenticated) return false;
-      if (!requiredRoles || requiredRoles.length === 0) return true;
-      return requiredRoles.some(role => hasRole(role));
-    };
+  const [overdueCount, setOverdueCount] = useState<number>(0);
 
-    const menuItems: MenuItem[] = [
-      { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-      { 
-        id: 'payroll-config', 
-        icon: Settings, 
-        label: 'Payroll Config',
+  const menuItems: MenuItem[] = useMemo(
+    () => [
+      { id: "dashboard", icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+      {
+        id: "payroll-config",
+        icon: Settings,
+        label: "Payroll Config",
         submenu: [
-          { id: 'policies', label: 'Policies', path: '/payroll-config/policies' },
-          { id: 'pay-grades', label: 'Pay Grades', path: '/payroll-config/pay-grades' },
-          { id: 'pay-types', label: 'Pay Types', path: '/payroll-config/pay-types' },
-          { id: 'overtime-rules', label: 'Overtime Rules', path: '/payroll-config/overtime-rules' },
-          { id: 'shift-differentials', label: 'Shift Differentials', path: '/payroll-config/shift-differentials' },
-          { id: 'allowances', label: 'Allowances', path: '/payroll-config/allowances' },
-          { id: 'multi-currency', label: 'Multi-Currency', path: '/payroll-config/multi-currency' },
-          { id: 'integrations', label: 'Integrations', path: '/payroll-config/integrations' }
-        ]
+          { id: "policies", label: "Policies", path: "/payroll-config/policies" },
+          { id: "pay-grades", label: "Pay Grades", path: "/payroll-config/pay-grades" },
+          { id: "pay-types", label: "Pay Types", path: "/payroll-config/pay-types" },
+          { id: "overtime-rules", label: "Overtime Rules", path: "/payroll-config/overtime-rules" },
+          { id: "shift-differentials", label: "Shift Differentials", path: "/payroll-config/shift-differentials" },
+          { id: "allowances", label: "Allowances", path: "/payroll-config/allowances" },
+          { id: "multi-currency", label: "Multi-Currency", path: "/payroll-config/multi-currency" },
+          { id: "integrations", label: "Integrations", path: "/payroll-config/integrations" },
+        ],
       },
       {
-        id: 'payroll-runs',
+        id: "payroll-runs",
         icon: Play,
-        label: 'Payroll Runs',
+        label: "Payroll Runs",
         submenu: [
-          { id: 'all-runs', label: 'All Runs', path: '/runs' },
-          { id: 'finalized-payslips', label: 'Finalized Payslips', path: '/payslips' },
-          { id: 'exceptions', label: 'Exceptions', path: '/exceptions' },
-          { id: 'bank-files', label: 'Bank Files', path: '/bank-files' }
-        ]
+          { id: "all-runs", label: "All Runs", path: "/all-runs/runs" },
+          { id: "finalized-payslips", label: "Finalized Payslips", path: "/payslips" },
+          { id: "exceptions", label: "Exceptions", path: "/exceptions" },
+          { id: "bank-files", label: "Bank Files", path: "/bank-files" },
+        ],
       },
       {
-        id: 'leave-management',
-        icon: Calendar,
-        label: 'Leave Management',
+        id: "employee-portal",
+        icon: User,
+        label: "Employee Portal",
         submenu: [
-          { id: 'my-leaves', label: 'My Leave Requests', path: '/leaves/my-leaves' },
-          { id: 'leave-approvals', label: 'Leave Approvals', path: '/leaves/approvals' },
-          { id: 'leave-balance', label: 'Leave Balance', path: '/leaves/my-leaves' },
-          { id: 'leave-config', label: 'Leave Configuration', path: '/leaves/config' }
-        ]
+          { id: "payslips", label: "Payslips", path: "/payslips" },
+          { id: "salary-history", label: "Salary History", path: "/employee-portal/salary-history" },
+          { id: "disputes", label: "Disputes", path: "/employee-portal/disputes" },
+          { id: "claims", label: "Claims", path: "/employee-portal/claims" },
+          { id: "tax-documents", label: "Tax Documents", path: "/employee-portal/tax-documents" },
+        ],
       },
       {
-      id: 'payroll-tracking',
-      icon: DollarSign,
-      label: 'Payroll Tracking',
-      roles: ['department employee', 'Payroll Specialist', 'Payroll Manager', 'Finance Staff'],
-      submenu: [
-        // Employee menu items
-        {
-          id: 'my-payslips',
-          label: 'My Payslips',
-          path: '/payroll-tracking/payslips',
-          roles: ['department employee']
-        },
-        {
-          id: 'my-salary-details',
-          label: 'Salary Details',
-          path: '/payroll-tracking/salary-details',
-          roles: ['department employee']
-        },
-        {
-          id: 'my-disputes',
-          label: 'My Disputes',
-          path: '/payroll-tracking/disputes',
-          roles: ['department employee']
-        },
-        {
-          id: 'my-claims',
-          label: 'My Claims',
-          path: '/payroll-tracking/claims',
-          roles: ['department employee']
-        },
-        {
-          id: 'tax-documents',
-          label: 'Tax Documents',
-          path: '/payroll-tracking/tax-documents',
-          roles: ['department employee']
-        },
-        // Specialist menu items
-        {
-          id: 'review-disputes',
-          label: 'Review Disputes',
-          path: '/payroll-tracking/specialist/disputes',
-          roles: ['Payroll Specialist']
-        },
-        {
-          id: 'review-claims',
-          label: 'Review Claims',
-          path: '/payroll-tracking/specialist/claims',
-          roles: ['Payroll Specialist']
-        },
-        {
-          id: 'department-reports',
-          label: 'Department Reports',
-          path: '/payroll-tracking/specialist/reports',
-          roles: ['Payroll Specialist']
-        },
-        // Manager menu items
-        {
-          id: 'manager-approvals',
-          label: 'Pending Approvals',
-          path: '/payroll-tracking/manager/approvals',
-          roles: ['Payroll Manager']
-        },
-        // Finance menu items
-        {
-          id: 'approved-disputes',
-          label: 'Approved Disputes',
-          path: '/payroll-tracking/finance/disputes',
-          roles: ['Finance Staff']
-        },
-        {
-          id: 'approved-claims',
-          label: 'Approved Claims',
-          path: '/payroll-tracking/finance/claims',
-          roles: ['Finance Staff']
-        },
-        {
-          id: 'finance-reports',
-          label: 'Financial Reports',
-          path: '/payroll-tracking/finance/reports',
-          roles: ['Finance Staff']
-        },
-      ]
-    },
-    ].filter(item => shouldShow(item.roles));
-  
+        id: "recruitment",
+        icon: Users,
+        label: "Recruitment",
+        submenu: [
+          { id: "contracts", label: "Contracts", path: "/contracts" },
+          { id: "documents", label: "Documents", path: "/documents" },
+          { id: "onboarding", label: "Onboarding", path: "/onboarding" },
+          { id: "termination", label: "Termination", path: "/termination" },
+        ],
+      },
+      { id: "reports", icon: TrendingUp, label: "Reports", path: "/reports" },
+    ],
+    []
+  );
 
-    function handleClick (id : string, path: string) 
-    {
-      setActiveItem(id)
-      router.push(path)
-    }  
+  function handleClick(id: string, path: string) {
+    setActiveItem(id);
+    router.push(path);
+  }
 
- return (
-    <div className="w-60 bg-slate-900 text-white h-screen flex flex-col overflow-y-auto">
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOverdueBadge() {
+      try {
+        const api: any = await import("@/lib/onboardingService");
+
+        const listFn =
+          api.getOnboardings ||
+          api.listOnboardings ||
+          api.default?.getOnboardings ||
+          api.default?.listOnboardings;
+
+        if (typeof listFn !== "function") return;
+
+        const onboardings = await listFn();
+
+        let count = 0;
+        for (const o of onboardings || []) {
+          const tasks = o?.tasks || [];
+          for (const t of tasks) {
+            if (isOverdue(t)) count += 1;
+          }
+        }
+
+        if (!cancelled) setOverdueCount(count);
+      } catch {
+        // ignore badge errors (do not break sidebar)
+      }
+    }
+
+    loadOverdueBadge();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="w-60 bg-slate-900 text-white h-screen flex flex-col">
       <div className="p-4 border-b border-slate-700">
-        <span className="font-semibold text-sm">HR System</span>
+        <span className="font-semibold text-sm">Payroll System</span>
       </div>
 
-      <nav className="flex-1 py-2">
-        {menuItems.map(item => {
-          const Icon = item.icon;
-          const filteredSubmenu = item.submenu?.filter(subItem =>
-            shouldShow(subItem.roles || item.roles)
-          ) || [];
-
-          // Don't show parent item if it has submenu but no visible submenu items
-          if (item.submenu && filteredSubmenu.length === 0) {
-            return null;
-          }
+      <nav className="flex-1 overflow-y-auto py-2">
+        {menuItems.map((item) => {
+          const Icon = (item as any).icon;
 
           return (
-            <div key={item.id}>
+            <div key={(item as any).id}>
               <button
                 onClick={() => {
-                  if (!item.submenu && item.path) {
-                    handleClick(item.id, item.path);
+                  if (!(item as any).submenu && (item as any).path) {
+                    handleClick((item as any).id, (item as any).path);
                   }
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-800 transition-colors ${activeItem === item.id && !item.submenu ? 'bg-blue-600' : ''
-                  }`}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-800 transition-colors ${
+                  activeItem === (item as any).id && !(item as any).submenu ? "bg-blue-600" : ""
+                }`}
               >
                 <Icon size={18} />
-                <span className="flex-1 text-left">{item.label}</span>
+                <span className="flex-1 text-left">{(item as any).label}</span>
               </button>
 
-              {filteredSubmenu.length > 0 && (
+              {(item as any).submenu && (
                 <div>
-                  {filteredSubmenu.map(subItem => (
+                  {(item as any).submenu.map((subItem: any) => (
                     <button
                       key={subItem.id}
                       onClick={() => handleClick(subItem.id, subItem.path)}
-                      className={`w-full flex items-center gap-3 px-4 pl-10 py-2 text-sm hover:bg-slate-800 transition-colors ${activeItem === subItem.id ? 'bg-blue-600' : ''
-                        }`}
+                      className={`w-full flex items-center gap-3 px-4 pl-10 py-2 text-sm hover:bg-slate-800 transition-colors ${
+                        activeItem === subItem.id ? "bg-blue-600" : ""
+                      }`}
                     >
                       <FileText size={14} />
-                      <span className="text-left">{subItem.label}</span>
+                      <span className="text-left flex-1">{subItem.label}</span>
+
+                      {subItem.id === "onboarding" && overdueCount > 0 ? (
+                        <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-xs px-2 py-0.5">
+                          {overdueCount}
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>

@@ -3,8 +3,6 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -24,7 +22,6 @@ import {
   LeaveAdjustmentDocument,
 } from './models/leave-adjustment.schema';
 import { Calendar, CalendarDocument } from './models/calendar.schema';
-import { LeaveDelegation, LeaveDelegationDocument } from './models/leave-delegation.schema';
 import { LeaveStatus } from './enums/leave-status.enum'; // Adjusted path to the correct location
 import { AccrualMethod } from './enums/accrual-method.enum'; // Adjust the path if necessary
 import {
@@ -34,10 +31,6 @@ import {
   ApproveLeaveRequestDto,
   RejectLeaveRequestDto,
 } from './dto/leave-request.dto';
-import { EmailService } from '../Common/email/email.service';
-import { IntegrationService } from './services/integration.service';
-import { EmployeeProfileService } from '../employee-profile/employee-profile.service';
-import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
 
 @Injectable()
 export class LeavesService {
@@ -52,21 +45,14 @@ export class LeavesService {
     private leavePolicyModel: Model<LeavePolicyDocument>,
     @InjectModel(LeaveAdjustment.name)
     private leaveAdjustmentModel: Model<LeaveAdjustmentDocument>,
-    @InjectModel(LeaveDelegation.name)
-    private leaveDelegationModel: Model<LeaveDelegationDocument>,
     @InjectModel(Calendar.name)
     private calendarModel: Model<CalendarDocument>,
-    private emailService: EmailService,
-    private integrationService: IntegrationService,
-    @Inject(forwardRef(() => EmployeeProfileService))
-    private readonly employeeProfileService: EmployeeProfileService,
   ) {}
 
   // ==================== EMPLOYEE SERVICES ====================
 
   /**
    * Create leave request (REQ-015)
-   * Sends email notification to manager
    */
   async createLeaveRequest(employeeId: string, createDto: CreateLeaveRequestDto) {
     // Validate leave type
@@ -130,35 +116,6 @@ export class LeavesService {
     // Update pending balance
     entitlement.pending += durationDays;
     await entitlement.save();
-
-    // Send email notification to manager (REQ-029)
-    try {
-      const populatedRequest = await savedRequest.populate([
-        { path: 'leaveTypeId', select: 'code name' },
-        { path: 'employeeId', select: 'employeeNumber firstName lastName workEmail' },
-      ]);
-
-      // Get manager email from organization structure
-      let managerEmail = await this.integrationService.getManagerEmail(employeeId);
-      
-      // Fallback if no manager found found (e.g. CEO or data issue)
-      if (!managerEmail) {
-        console.warn(`No manager found for employee ${employeeId}, using default admin email`);
-        managerEmail = 'admin@company.com'; 
-      }
-      
-      await this.emailService.sendLeaveRequestNotification(
-        managerEmail,
-        `${(populatedRequest.employeeId as any).firstName} ${(populatedRequest.employeeId as any).lastName}`,
-        (populatedRequest.leaveTypeId as any).name,
-        fromDate.toLocaleDateString(),
-        toDate.toLocaleDateString(),
-        savedRequest._id.toString(),
-      );
-    } catch (emailError) {
-      console.error('Failed to send email notification:', emailError);
-      // Don't fail the request if email fails
-    }
 
     return savedRequest.populate([
       { path: 'leaveTypeId', select: 'code name' },
@@ -272,36 +229,10 @@ export class LeavesService {
   async getPendingLeaveRequests(managerId: string, filters?: { page?: number; limit?: number }) {
     const { page = 1, limit = 10 } = filters || {};
 
-    // 1. Get Direct Reports
-    const directReports = await this.integrationService.getDirectReports(managerId);
-    let targetEmployeeIds = new Set(directReports);
-
-    // 2. Get Delegated Reports (Where I am the delegate)
-    const today = new Date();
-    const activeDelegationsToMe = await this.leaveDelegationModel.find({
-        delegateId: new Types.ObjectId(managerId),
-        isActive: true,
-        startDate: { $lte: today },
-        endDate: { $gte: today }
-    });
-
-    for (const delegation of activeDelegationsToMe) {
-        const delegatedReports = await this.integrationService.getDirectReports(delegation.managerId.toString());
-        delegatedReports.forEach(id => targetEmployeeIds.add(id));
-    }
-
-    const employeeIdsArray = Array.from(targetEmployeeIds).map(id => new Types.ObjectId(id));
-    
-    if (employeeIdsArray.length === 0) {
-        return {
-            requests: [],
-            pagination: { page, limit, total: 0, totalPages: 0 }
-        };
-    }
-
-    // 3. Query Requests
+    // Get employees reporting to this manager
+    // This would typically come from organization structure
+    // For now, we'll get all pending requests (simplified)
     const query = {
-      employeeId: { $in: employeeIdsArray },
       status: LeaveStatus.PENDING,
       'approvalFlow.role': 'line_manager',
       'approvalFlow.status': LeaveStatus.PENDING,
@@ -333,88 +264,6 @@ export class LeavesService {
   }
 
   /**
-   * Set delegation for manager (REQ-023)
-   */
-  async setDelegation(managerId: string, delegateId: string, startDate: Date, endDate: Date, reason?: string) {
-      // Validate dates
-      if (startDate > endDate) {
-          throw new BadRequestException('Start date must be before end date');
-      }
-
-      // Deactivate existing conflicting delegations?
-      // For now, allow multiple, but typically one active.
-
-      const delegation = new this.leaveDelegationModel({
-          managerId: new Types.ObjectId(managerId),
-          delegateId: new Types.ObjectId(delegateId),
-          startDate,
-          endDate,
-          reason,
-          isActive: true
-      });
-
-      return delegation.save();
-  }
-
-  /**
-   * Create or update leave policy (REQ-007)
-   */
-  async createLeavePolicy(data: {
-    leaveTypeId: string;
-    accrualMethod: string;
-    monthlyRate?: number;
-    yearlyRate?: number;
-    carryForwardAllowed?: boolean;
-    maxCarryForward?: number;
-    eligibility?: any;
-  }) {
-    // Check if policy exists
-    let policy = await this.leavePolicyModel.findOne({
-      leaveTypeId: new Types.ObjectId(data.leaveTypeId),
-    });
-
-    if (policy) {
-      // Update
-      policy.accrualMethod = data.accrualMethod as AccrualMethod;
-      policy.monthlyRate = data.monthlyRate ?? 0;
-      policy.yearlyRate = data.yearlyRate ?? 0;
-      policy.carryForwardAllowed = data.carryForwardAllowed ?? false;
-      policy.maxCarryForward = data.maxCarryForward ?? 0;
-      if (data.eligibility) policy.eligibility = data.eligibility;
-      return policy.save();
-    } else {
-      // Create
-      policy = new this.leavePolicyModel({
-        leaveTypeId: new Types.ObjectId(data.leaveTypeId),
-        accrualMethod: data.accrualMethod,
-        monthlyRate: data.monthlyRate ?? 0,
-        yearlyRate: data.yearlyRate ?? 0,
-        carryForwardAllowed: data.carryForwardAllowed ?? false,
-        maxCarryForward: data.maxCarryForward ?? 0,
-        eligibility: data.eligibility,
-      });
-      return policy.save();
-    }
-  }
-
-  /**
-   * Get active delegations for a manager
-   */
-  async getActiveDelegations(managerId: string) {
-      return this.leaveDelegationModel.find({
-          managerId: new Types.ObjectId(managerId),
-          isActive: true
-      }).populate('delegateId', 'firstName lastName employeeNumber');
-  }
-
-  /**
-   * Get all leave policies (for Admin)
-   */
-  async getLeavePolicies() {
-      return this.leavePolicyModel.find().populate('leaveTypeId', 'code name').lean();
-  }
-
-  /**
    * Approve leave request by manager (REQ-021)
    */
   async approveLeaveRequestByManager(requestId: string, managerId: string, approveDto: ApproveLeaveRequestDto) {
@@ -443,7 +292,6 @@ export class LeavesService {
 
     await request.save();
 
-    // Note: Email to employee will be sent after HR final approval
     return request.populate([
       { path: 'leaveTypeId', select: 'code name' },
       { path: 'employeeId', select: 'employeeNumber firstName lastName' },
@@ -452,7 +300,6 @@ export class LeavesService {
 
   /**
    * Reject leave request by manager (REQ-022)
-   * Sends rejection email to employee
    */
   async rejectLeaveRequestByManager(requestId: string, managerId: string, rejectDto: RejectLeaveRequestDto) {
     const request = await this.leaveRequestModel.findById(requestId);
@@ -486,24 +333,6 @@ export class LeavesService {
     if (entitlement) {
       entitlement.pending -= request.durationDays;
       await entitlement.save();
-    }
-
-    // Send rejection email to employee (REQ-030)
-    try {
-      const populatedRequest = await request.populate([
-        { path: 'leaveTypeId', select: 'code name' },
-        { path: 'employeeId', select: 'employeeNumber firstName lastName workEmail' },
-      ]);
-
-      await this.emailService.sendLeaveRejectedNotification(
-        (populatedRequest.employeeId as any).workEmail,
-        (populatedRequest.leaveTypeId as any).name,
-        request.dates.from.toLocaleDateString(),
-        request.dates.to.toLocaleDateString(),
-        rejectDto.reason,
-      );
-    } catch (emailError) {
-      console.error('Failed to send rejection email:', emailError);
     }
 
     return request;
@@ -591,38 +420,8 @@ export class LeavesService {
       await entitlement.save();
     }
 
-    // Send final approval email to employee (REQ-030)
-    try {
-      const populatedRequest = await request.populate([
-        { path: 'leaveTypeId', select: 'code name' },
-        { path: 'employeeId', select: 'employeeNumber firstName lastName workEmail' },
-      ]);
-
-      await this.emailService.sendLeaveApprovedNotification(
-        (populatedRequest.employeeId as any).workEmail,
-        (populatedRequest.leaveTypeId as any).name,
-        request.dates.from.toLocaleDateString(),
-        request.dates.to.toLocaleDateString(),
-      );
-    } catch (emailError) {
-      console.error('Failed to send approval email:', emailError);
-    }
-
-    // Sync with Time Management module (REQ-042)
-    try {
-      await this.syncLeaveToTimeManagement(request);
-    } catch (error) {
-      console.error('Failed to sync with Time Management:', error);
-      // Don't fail the approval if sync fails - can be retried
-    }
-
-    // Sync with Payroll module (REQ-042)
-    try {
-      await this.syncLeaveToPayroll(request);
-    } catch (error) {
-      console.error('Failed to sync with Payroll:', error);
-      // Don't fail the approval if sync fails - can be retried
-    }
+    // TODO: Sync with Time Management module (REQ-042)
+    // TODO: Sync with Payroll module (REQ-042)
 
     return request.populate([
       { path: 'leaveTypeId', select: 'code name' },
@@ -664,52 +463,6 @@ export class LeavesService {
       entitlement.taken += request.durationDays;
       entitlement.remaining = entitlement.accruedRounded + entitlement.carryForward - entitlement.taken;
       await entitlement.save();
-    }
-
-    return request;
-  }
-
-  /**
-   * Delegate leave approval to another manager (REQ-023)
-   */
-  async delegateLeaveApproval(
-    requestId: string,
-    fromManagerId: string,
-    toManagerId: string,
-  ) {
-    const request = await this.leaveRequestModel.findById(requestId);
-    if (!request) {
-      throw new NotFoundException('Leave request not found');
-    }
-
-    if (request.status !== LeaveStatus.PENDING) {
-      throw new BadRequestException(`Cannot delegate request with status: ${request.status}`);
-    }
-
-    // Update the delegatedBy field
-    request.delegatedBy = new Types.ObjectId(toManagerId);
-    await request.save();
-
-    // Send notification to delegated manager
-    try {
-      const populatedRequest = await request.populate([
-        { path: 'leaveTypeId', select: 'code name' },
-        { path: 'employeeId', select: 'employeeNumber firstName lastName workEmail' },
-      ]);
-
-      // TODO: Get delegated manager email from organization structure
-      const delegateEmail = 'delegate@company.com'; // Replace with actual lookup
-      
-      await this.emailService.sendDelegationNotification(
-        delegateEmail,
-        `${(populatedRequest.employeeId as any).firstName} ${(populatedRequest.employeeId as any).lastName}`,
-        (populatedRequest.leaveTypeId as any).name,
-        request.dates.from.toLocaleDateString(),
-        request.dates.to.toLocaleDateString(),
-        requestId,
-      );
-    } catch (error) {
-      console.error('Failed to send delegation notification:', error);
     }
 
     return request;
@@ -761,34 +514,23 @@ export class LeavesService {
 
   /**
    * Calculate leave duration excluding weekends and holidays (BR 23)
-   * Enhanced to properly fetch calendar holidays
    */
   private async calculateLeaveDuration(fromDate: Date, toDate: Date): Promise<number> {
     let duration = 0;
     const currentDate = new Date(fromDate);
 
     // Get holidays for the period
-    const currentYear = fromDate.getFullYear();
-    const calendar = await this.calendarModel.findOne({
-      year: currentYear,
+    const holidays = await this.calendarModel.find({
+      'holidays': {
+        $exists: true,
+      },
     }).lean();
 
     const holidayDates = new Set<string>();
-    
-    if (calendar && calendar.blockedPeriods) {
-      // Extract holiday dates from calendar
-      calendar.blockedPeriods.forEach((period: any) => {
-        const periodStart = new Date(period.from);
-        const periodEnd = new Date(period.to);
-        
-        // Add all dates in the blocked period
-        const tempDate = new Date(periodStart);
-        while (tempDate <= periodEnd) {
-          holidayDates.add(tempDate.toISOString().split('T')[0]);
-          tempDate.setDate(tempDate.getDate() + 1);
-        }
-      });
-    }
+    holidays.forEach((calendar) => {
+      // Extract holiday dates (simplified)
+      // In production, you'd properly parse the holiday dates
+    });
 
     while (currentDate <= toDate) {
       const dayOfWeek = currentDate.getDay();
@@ -817,38 +559,17 @@ export class LeavesService {
       throw new NotFoundException('Leave type not found');
     }
 
-    const employee = await this.employeeProfileService.getProfile(employeeId);
-    if (!employee) {
-        throw new NotFoundException('Employee profile not found');
-    }
-
     // Check minimum tenure if required
     if (leaveType.minTenureMonths) {
-       const hireDate = new Date(employee.dateOfHire);
-       const now = new Date();
-       const tenureMonths = (now.getFullYear() - hireDate.getFullYear()) * 12 + (now.getMonth() - hireDate.getMonth());
-       
-       if (tenureMonths < leaveType.minTenureMonths) {
-           throw new BadRequestException(`Minimum tenure of ${leaveType.minTenureMonths} months required.`);
-       }
+      // This would check employee's hire date vs current date
+      // Simplified for now
     }
 
     // Check other eligibility criteria based on leave policy
     const policy = await this.leavePolicyModel.findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) });
     if (policy?.eligibility) {
-        // Contract Type Check
-        if (policy.eligibility.contractTypesAllowed && policy.eligibility.contractTypesAllowed.length > 0) {
-            if (!policy.eligibility.contractTypesAllowed.includes(employee.contractType)) {
-                throw new BadRequestException(`This leave type is not available for contract type: ${employee.contractType}`);
-            }
-        }
-        
-        // Position Check (if policy restricts certain positions)
-         if (policy.eligibility.positionsAllowed && policy.eligibility.positionsAllowed.length > 0) {
-             // Assuming storing position names or IDs. If IDs, would need string comparison
-             // For now, skipping detailed position check as it requires deeper org structure lookup/comparison
-             // logic similar to contract type would go here
-         }
+      // Validate eligibility criteria
+      // Simplified for now
     }
   }
 
@@ -876,30 +597,6 @@ export class LeavesService {
    * Process leave accrual (REQ-040)
    */
   async processLeaveAccrual(employeeId: string, leaveTypeId: string): Promise<void> {
-    // BR 11: Accrual must pause during unpaid leave or suspension
-    const employee = await this.employeeProfileService.getProfile(employeeId);
-    if (!employee || employee.status === EmployeeStatus.SUSPENDED || employee.status === EmployeeStatus.TERMINATED) {
-        console.log(`Skipping accrual for employee ${employeeId}: Status is ${employee?.status}`);
-        return;
-    }
-
-    // Check if currently on Unpaid Leave
-    const today = new Date();
-    const activeUnpaidLeave = await this.leaveRequestModel.findOne({
-        employeeId: new Types.ObjectId(employeeId),
-        status: LeaveStatus.APPROVED,
-        'dates.from': { $lte: today },
-        'dates.to': { $gte: today },
-    }).populate('leaveTypeId');
-
-    if (activeUnpaidLeave) {
-        const activeLeaveType = activeUnpaidLeave.leaveTypeId as any;
-        if (activeLeaveType && activeLeaveType.paid === false) {
-             console.log(`Skipping accrual for employee ${employeeId}: Currently on Unpaid Leave`);
-             return;
-        }
-    }
-
     const policy = await this.leavePolicyModel.findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) });
     if (!policy) {
       return;
@@ -967,54 +664,6 @@ export class LeavesService {
     entitlement.nextResetDate = new Date(new Date().getFullYear() + 1, 0, 1); // Next year Jan 1
 
     await entitlement.save();
-  }
-
-  /**
-   * Get all active leave types
-   */
-  async getAllLeaveTypes(): Promise<any[]> {
-    return this.leaveTypeModel.find().lean();
-  }
-
-  /**
-   * Create a new leave type
-   */
-  async createLeaveType(data: {
-    code: string;
-    name: string;
-    categoryId: string;
-    description?: string;
-    paid?: boolean;
-    deductible?: boolean;
-  }): Promise<any> {
-    const leaveType = new this.leaveTypeModel({
-      code: data.code,
-      name: data.name,
-      categoryId: new Types.ObjectId(data.categoryId),
-      description: data.description,
-      paid: data.paid ?? true,
-      deductible: data.deductible ?? true,
-      isActive: true,
-    });
-
-    return leaveType.save();
-  }
-
-  /**
-   * Sync approved leave to Time Management module (REQ-042)
-   * Blocks attendance for approved leave dates
-   */
-  private async syncLeaveToTimeManagement(request: any): Promise<void> {
-    await this.integrationService.syncToTimeManagement(request);
-  }
-
-  /**
-   * Sync approved leave to Payroll module (REQ-042)
-   * Links leave to payroll codes for salary adjustments
-   */
-  private async syncLeaveToPayroll(request: any): Promise<void> {
-    const leaveType = await this.leaveTypeModel.findById(request.leaveTypeId);
-    await this.integrationService.syncToPayroll(request, leaveType);
   }
 }
 

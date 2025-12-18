@@ -1,77 +1,189 @@
 "use client";
+
+import React, { useEffect, useMemo, useState } from "react";
 import { Briefcase, ChevronRight, Clock, DollarSign, TrendingUp, Users } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { useRouter } from "next/navigation";
+
+function isOverdue(task: any) {
+  if (!task) return false;
+  if (task.status === "completed" || task.completedAt) return false;
+  if (!task.deadline) return false;
+  const d = new Date(task.deadline);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
+}
 
 const Dashboard = () => {
-  const { user } = useAuth();
-  
-  const stats = [
-    {
-      title: 'Total Employees',
-      value: '1,247',
-      change: '+12 this month',
-      changeType: 'positive',
-      icon: Users,
-      color: 'bg-blue-500'
-    },
-    {
-      title: 'Active Recruitments',
-      value: '23',
-      change: '8 positions filled',
-      changeType: 'positive',
-      icon: Briefcase,
-      color: 'bg-green-500'
-    },
-    {
-      title: 'Pending Approvals',
-      value: '47',
-      change: '15 leave requests',
-      changeType: 'neutral',
-      icon: Clock,
-      color: 'bg-yellow-500'
-    },
-    {
-      title: 'Payroll Processing',
-      value: '$2.5M',
-      change: 'December 2025',
-      changeType: 'neutral',
-      icon: DollarSign,
-      color: 'bg-purple-500'
+  const router = useRouter();
+
+  const [onboardingSummary, setOnboardingSummary] = useState<{
+    total: number;
+    active: number;
+    overdueTasks: number;
+    loading: boolean;
+  }>({
+    total: 0,
+    active: 0,
+    overdueTasks: 0,
+    loading: true,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOnboardingSummary() {
+      try {
+        const api: any = await import("@/lib/onboardingService");
+
+        const listFn =
+          api.getOnboardings ||
+          api.listOnboardings ||
+          api.default?.getOnboardings ||
+          api.default?.listOnboardings;
+
+        if (typeof listFn !== "function") {
+          if (!cancelled) setOnboardingSummary((s) => ({ ...s, loading: false }));
+          return;
+        }
+
+        const onboardings = await listFn();
+
+        let total = 0;
+        let active = 0;
+        let overdueTasks = 0;
+
+        for (const o of onboardings || []) {
+          total += 1;
+          if (!o?.completed) active += 1;
+
+          const tasks = o?.tasks || [];
+          for (const t of tasks) {
+            if (isOverdue(t)) overdueTasks += 1;
+          }
+        }
+
+        if (!cancelled) {
+          setOnboardingSummary({
+            total,
+            active,
+            overdueTasks,
+            loading: false,
+          });
+        }
+      } catch {
+        if (!cancelled) setOnboardingSummary((s) => ({ ...s, loading: false }));
+      }
     }
-  ];
 
-  const pendingActions = [
-    { id: 1, type: 'Leave Request', employee: 'Ahmed Hassan', department: 'Engineering', priority: 'High', status: 'Pending Manager' },
-    { id: 2, type: 'Overtime Approval', employee: 'Fatima Ali', department: 'Sales', priority: 'Medium', status: 'Pending HR' },
-    { id: 3, type: 'Performance Review', employee: 'Mohamed Ibrahim', department: 'Marketing', priority: 'High', status: 'In Progress' },
-    { id: 4, type: 'Onboarding Task', employee: 'Sara Ahmed', department: 'Finance', priority: 'High', status: 'Pending IT' },
-    { id: 5, type: 'Exit Interview', employee: 'Youssef Mahmoud', department: 'Operations', priority: 'Medium', status: 'Scheduled' }
-  ];
+    loadOnboardingSummary();
 
-  const recentActivities = [
-    { id: 1, action: 'Payroll processed for December 2025', user: 'Payroll Specialist', time: '2 hours ago' },
-    { id: 2, action: 'New employee onboarded: Sara Ahmed', user: 'HR Admin', time: '5 hours ago' },
-    { id: 3, action: 'Performance cycle initiated for Q4', user: 'HR Manager', time: '1 day ago' },
-    { id: 4, action: 'Job posting published: Senior Developer', user: 'Recruiter', time: '1 day ago' },
-    { id: 5, action: 'Leave policy updated: Annual Leave', user: 'HR Manager', time: '2 days ago' }
-  ];
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const quickLinks = [
-    { title: 'Process Payroll', description: 'Run monthly payroll cycle', icon: DollarSign, color: 'text-purple-600' },
-    { title: 'Review Candidates', description: '12 new applications', icon: Briefcase, color: 'text-green-600' },
-    { title: 'Attendance Reports', description: 'View team attendance', icon: Clock, color: 'text-blue-600' },
-    { title: 'Performance Reviews', description: '8 pending reviews', icon: TrendingUp, color: 'text-orange-600' }
-  ];
+  const stats = useMemo(
+    () => [
+      {
+        title: "Total Employees",
+        value: "1,247",
+        change: "+12 this month",
+        changeType: "positive",
+        icon: Users,
+        color: "bg-blue-500",
+      },
+      {
+        title: "Active Recruitments",
+        value: "23",
+        change: "8 positions filled",
+        changeType: "positive",
+        icon: Briefcase,
+        color: "bg-green-500",
+      },
+      {
+        title: "Pending Approvals",
+        value: "47",
+        change: "15 leave requests",
+        changeType: "neutral",
+        icon: Clock,
+        color: "bg-yellow-500",
+      },
+      {
+        title: "Payroll Processing",
+        value: "$2.5M",
+        change: "December 2025",
+        changeType: "neutral",
+        icon: DollarSign,
+        color: "bg-purple-500",
+      },
+    ],
+    []
+  );
 
-  if (!user) return null;
+  const pendingActions = useMemo(
+    () => [
+      { id: 1, type: "Leave Request", employee: "Ahmed Hassan", department: "Engineering", priority: "High", status: "Pending Manager" },
+      { id: 2, type: "Overtime Approval", employee: "Fatima Ali", department: "Sales", priority: "Medium", status: "Pending HR" },
+      { id: 3, type: "Performance Review", employee: "Mohamed Ibrahim", department: "Marketing", priority: "High", status: "In Progress" },
+      { id: 4, type: "Onboarding Task", employee: "Sara Ahmed", department: "Finance", priority: "High", status: "Pending IT" },
+      { id: 5, type: "Exit Interview", employee: "Youssef Mahmoud", department: "Operations", priority: "Medium", status: "Scheduled" },
+      { id: 6, type: "Termination Request", employee: "Youssef Mahmoud", department: "Operations", priority: "High", status: "Pending HR Approval" },
+    ],
+    []
+  );
+
+  const recentActivities = useMemo(
+    () => [
+      { id: 1, action: "Payroll processed for December 2025", user: "Payroll Specialist", time: "2 hours ago" },
+      { id: 2, action: "New employee onboarded: Sara Ahmed", user: "HR Admin", time: "5 hours ago" },
+      { id: 3, action: "Performance cycle initiated for Q4", user: "HR Manager", time: "1 day ago" },
+      { id: 4, action: "Job posting published: Senior Developer", user: "Recruiter", time: "1 day ago" },
+      { id: 5, action: "Leave policy updated: Annual Leave", user: "HR Manager", time: "2 days ago" },
+    ],
+    []
+  );
+
+  const quickLinks = useMemo(
+    () => [
+      { title: "Process Payroll", description: "Run monthly payroll cycle", icon: DollarSign, color: "text-purple-600" },
+      { title: "Review Candidates", description: "12 new applications", icon: Briefcase, color: "text-green-600" },
+      { title: "Attendance Reports", description: "View team attendance", icon: Clock, color: "text-blue-600" },
+      { title: "Performance Reviews", description: "8 pending reviews", icon: TrendingUp, color: "text-orange-600" },
+    ],
+    []
+  );
 
   return (
-    <div className="p-6 bg-gray-50 min-h-full max-w-7xl mx-auto">
+    <div className="p-6 bg-gray-50 min-h-screen max-w-7xl">
       <div className="mb-6">
         <h2 className="text-2xl font-semibold text-gray-800 mb-1">Dashboard Overview</h2>
-        <p className="text-gray-500 text-sm">Welcome back, {user.firstName || 'User'}! Here&apos;s what&apos;s happening with your HR operations today.</p>
+        <p className="text-gray-500 text-sm">Welcome back! Here's what's happening with your HR operations today.</p>
       </div>
-      
+
+      {/* Onboarding Integration (2.7) */}
+      <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="text-sm text-gray-600">Onboarding</div>
+          {onboardingSummary.loading ? (
+            <div className="text-sm text-gray-700">Loading onboarding summary...</div>
+          ) : (
+            <div className="text-sm text-gray-800">
+              Total: <span className="font-semibold">{onboardingSummary.total}</span> • Active:{" "}
+              <span className="font-semibold">{onboardingSummary.active}</span> • Overdue tasks:{" "}
+              <span className="font-semibold">{onboardingSummary.overdueTasks}</span>
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => router.push("/onboarding")}
+          className="px-4 py-2 rounded bg-blue-600 text-white"
+        >
+          Open Onboarding
+        </button>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {stats.map((stat, index) => {
@@ -85,11 +197,15 @@ const Dashboard = () => {
               </div>
               <div className="text-gray-500 text-sm mb-1">{stat.title}</div>
               <div className="text-3xl font-bold text-gray-800 mb-2">{stat.value}</div>
-              <div className={`text-sm ${
-                stat.changeType === 'positive' ? 'text-green-600' : 
-                stat.changeType === 'negative' ? 'text-red-600' : 
-                'text-gray-500'
-              }`}>
+              <div
+                className={`text-sm ${
+                  stat.changeType === "positive"
+                    ? "text-green-600"
+                    : stat.changeType === "negative"
+                    ? "text-red-600"
+                    : "text-gray-500"
+                }`}
+              >
                 {stat.change}
               </div>
             </div>
@@ -136,17 +252,21 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {pendingActions.map(action => (
+                {pendingActions.map((action) => (
                   <tr key={action.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-sm text-gray-800">{action.type}</td>
                     <td className="px-4 py-3 text-sm text-gray-800">{action.employee}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{action.department}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        action.priority === 'High' ? 'bg-red-100 text-red-700' :
-                        action.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          action.priority === "High"
+                            ? "bg-red-100 text-red-700"
+                            : action.priority === "Medium"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-green-100 text-green-700"
+                        }`}
+                      >
                         {action.priority}
                       </span>
                     </td>
@@ -164,7 +284,7 @@ const Dashboard = () => {
             <h3 className="text-lg font-semibold text-gray-800">Recent Activities</h3>
           </div>
           <div className="p-4 space-y-4">
-            {recentActivities.map(activity => (
+            {recentActivities.map((activity) => (
               <div key={activity.id} className="flex gap-3">
                 <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
                 <div className="flex-1">
