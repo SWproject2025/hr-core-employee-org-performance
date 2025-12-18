@@ -35,6 +35,12 @@ export class LeaveType {
 
   @Prop({ default: null })
   maxDurationDays?: number;
+
+  @Prop({ default: true })
+  isActive: boolean;
+
+  @Prop({ type: String })
+  payrollCode?: string;
 }
 
 export const LeaveTypeSchema = SchemaFactory.createForClass(LeaveType);

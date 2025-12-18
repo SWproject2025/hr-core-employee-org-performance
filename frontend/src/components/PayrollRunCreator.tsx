@@ -34,28 +34,29 @@ const PayrollRunCreator = () => {
         },
         body: JSON.stringify({
           ...formData,
-          payrollPeriod: new Date(formData.payrollPeriod).toISOString(),
-        }),
+          payrollPeriod: new Date(formData.payrollPeriod).toISOString()
+        })
       });
-
+      
+      const data = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to create payroll run');
+        throw new Error(data.message || 'Failed to create payroll run');
       }
-
-      const json = await response.json();
-      setResult(json);
-
-      // Reset some fields but keep user-entered specialistId and entity
+      
+      setResult(data);
+      
+      // Reset form
       setFormData({
         runId: `PR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`,
         payrollPeriod: '',
-        payrollSpecialistId: formData.payrollSpecialistId,
-        entity: formData.entity,
+        payrollSpecialistId: formData.payrollSpecialistId, // Keep specialist ID
+        entity: formData.entity // Keep entity
       });
+      
     } catch (err: any) {
       console.error('Error creating payroll run:', err);
-      setError(err?.message || 'Failed to create payroll run. Please check console for details.');
+      setError(err.message || 'Failed to create payroll run. Please check console for details.');
     } finally {
       setLoading(false);
     }

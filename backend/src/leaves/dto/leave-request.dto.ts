@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsDateString, IsString, IsOptional, IsMongoId } from 'class-validator';
+import { IsNotEmpty, IsDateString, IsString, IsOptional, IsMongoId, IsEnum } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateLeaveRequestDto {
   @IsMongoId()

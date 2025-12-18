@@ -55,7 +55,7 @@ describe('EmployeeProfileController', () => {
     const dto = { mobilePhone: '123456' }; 
     const req = { user: { userId: '123' } };
     
-    await controller.updateContactInfo('123', dto, req);
+    await controller.updateContactInfo('123', dto, );
     expect(service.updateContactInfo).toHaveBeenCalledWith('123', dto);
   });
 });
@@ -82,7 +82,7 @@ describe('EmployeeProfileController', () => {
 
       mockEmployeeService.adminUpdateProfile.mockResolvedValue('updated-profile');
 
-      await controller.adminUpdate(id, dto, req);
+      await controller.adminUpdate(id, dto);
 
       expect(service.adminUpdateProfile).toHaveBeenCalledWith(id, dto);
     });

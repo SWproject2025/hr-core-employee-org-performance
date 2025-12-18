@@ -212,13 +212,41 @@ export class LeavesController {
     @Param('requestId') requestId: string,
     @Body('delegateToManagerId') delegateToManagerId: string,
   ) {
-    // Implementation would update the approver for this request
-    // Simplified for now
-    return {
-      message: 'Leave approval delegated successfully',
+    return this.leavesService.delegateLeaveApproval(
       requestId,
-      delegatedTo: delegateToManagerId,
-    };
+      user.employeeProfileId,
+      delegateToManagerId,
+    );
+  }
+
+  /**
+   * Set delegation (REQ-023)
+   */
+  @Post('delegation')
+  @Roles(SystemRole.DEPARTMENT_HEAD)
+  async setDelegation(
+    @CurrentUser() user: CurrentUserData,
+    @Body('delegateId') delegateId: string,
+    @Body('startDate') startDate: Date,
+    @Body('endDate') endDate: Date,
+    @Body('reason') reason?: string,
+  ) {
+    return this.leavesService.setDelegation(
+        user.employeeProfileId,
+        delegateId,
+        startDate,
+        endDate,
+        reason
+    );
+  }
+
+  /**
+   * Get active delegations
+   */
+  @Get('delegation/active')
+  @Roles(SystemRole.DEPARTMENT_HEAD)
+  async getActiveDelegations(@CurrentUser() user: CurrentUserData) {
+      return this.leavesService.getActiveDelegations(user.employeeProfileId);
   }
 
   // ==================== HR ADMIN ENDPOINTS ====================
@@ -372,10 +400,10 @@ export class LeavesController {
   @Get('types')
   @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
   async getAllLeaveTypes() {
-    // Implementation would fetch all active leave types
+    const leaveTypes = await this.leavesService.getAllLeaveTypes();
     return {
       message: 'Leave types retrieved successfully',
-      leaveTypes: [],
+      leaveTypes,
     };
   }
 
@@ -393,12 +421,27 @@ export class LeavesController {
     @Body('paid') paid?: boolean,
     @Body('deductible') deductible?: boolean,
   ) {
-    // Implementation would create a new leave type
-    return {
-      message: 'Leave type created successfully',
+    const leaveType = await this.leavesService.createLeaveType({
       code,
       name,
+      categoryId,
+      description,
+      paid,
+      deductible,
+    });
+    return {
+      message: 'Leave type created successfully',
+      leaveType,
     };
+  }
+
+  /**
+   * Get all leave policies
+   */
+  @Get('admin/policies')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async getLeavePolicies() {
+      return this.leavesService.getLeavePolicies();
   }
 
   /**
@@ -415,11 +458,14 @@ export class LeavesController {
     @Body('carryForwardAllowed') carryForwardAllowed?: boolean,
     @Body('maxCarryForward') maxCarryForward?: number,
   ) {
-    // Implementation would create/update leave policy
-    return {
-      message: 'Leave policy configured successfully',
+    return this.leavesService.createLeavePolicy({
       leaveTypeId,
-    };
+      accrualMethod,
+      monthlyRate,
+      yearlyRate,
+      carryForwardAllowed,
+      maxCarryForward,
+    });
   }
 
   /**

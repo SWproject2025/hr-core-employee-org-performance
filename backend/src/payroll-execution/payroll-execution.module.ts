@@ -10,6 +10,7 @@ import { employeePayrollDetails, employeePayrollDetailsSchema } from './models/e
 import { employeePenalties, employeePenaltiesSchema } from './models/employeePenalties.schema';
 import { paySlip, paySlipSchema } from './models/payslip.schema';
 import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/models/employee-profile.schema';
+import { payGrade, payGradeSchema } from '../payroll-configuration/models/payGrades.schema'; // ✅ ADD THIS IMPORT
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/mode
       { name: employeePenalties.name, schema: employeePenaltiesSchema },
       { name: paySlip.name, schema: paySlipSchema },
       { name: EmployeeProfile.name, schema: EmployeeProfileSchema },
+      { name: payGrade.name, schema: payGradeSchema }, // ✅ ADD THIS LINE
     ]),
   ],
   controllers: [PayrollExecutionController],
