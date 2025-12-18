@@ -1,6 +1,9 @@
+// src/performance/performance.controller.ts
+
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -8,10 +11,13 @@ import {
   Query,
 } from '@nestjs/common';
 import { PerformanceService } from './performance.service';
+
 import { CreateAppraisalTemplateDto } from './dto/create-appraisal-template.dto';
 import { UpdateAppraisalTemplateDto } from './dto/update-appraisal-template.dto';
 import { CreateAppraisalCycleDto } from './dto/create-appraisal-cycle.dto';
+
 import { SubmitAppraisalDto } from './dto/submit-appraisal.dto';
+import { SubmitDisputeDto } from './dto/SubmitDisputeDto';
 import { ResolveDisputeDto } from './dto/ResolveDisputeDto';
 
 @Controller('performance')
@@ -38,11 +44,13 @@ export class PerformanceController {
   }
 
   @Patch('templates/:id')
-  updateTemplate(
-    @Param('id') id: string,
-    @Body() dto: UpdateAppraisalTemplateDto,
-  ) {
+  updateTemplate(@Param('id') id: string, @Body() dto: UpdateAppraisalTemplateDto) {
     return this.performanceService.updateTemplate(id, dto);
+  }
+
+  @Delete('templates/:id')
+  deleteTemplate(@Param('id') id: string) {
+    return this.performanceService.removeTemplate(id);
   }
 
   // ================
@@ -64,7 +72,6 @@ export class PerformanceController {
     return this.performanceService.getCycleById(id);
   }
 
-  // ✅ Cycle lifecycle (HR)
   @Post('cycles/:id/activate')
   activateCycle(@Param('id') id: string) {
     return this.performanceService.activateCycle(id);
@@ -86,7 +93,7 @@ export class PerformanceController {
   }
 
   // ================
-  // MANAGER – ASSIGNMENTS & SUBMISSION
+  // MANAGER
   // ================
 
   @Get('manager/:managerProfileId/assignments')
@@ -94,19 +101,12 @@ export class PerformanceController {
     @Param('managerProfileId') managerProfileId: string,
     @Query('cycleId') cycleId?: string,
   ) {
-    return this.performanceService.getAssignmentsForManager(
-      managerProfileId,
-      cycleId,
-    );
+    return this.performanceService.getAssignmentsForManager(managerProfileId, cycleId);
   }
 
   @Get('manager/assignments/:assignmentId')
-  getManagerAssignmentDetails(
-    @Param('assignmentId') assignmentId: string,
-  ) {
-    return this.performanceService.getAssignmentDetailsForManager(
-      assignmentId,
-    );
+  getManagerAssignmentDetails(@Param('assignmentId') assignmentId: string) {
+    return this.performanceService.getAssignmentDetailsForManager(assignmentId);
   }
 
   @Post('manager/assignments/:assignmentId/submit')
@@ -114,14 +114,11 @@ export class PerformanceController {
     @Param('assignmentId') assignmentId: string,
     @Body() dto: SubmitAppraisalDto,
   ) {
-    return this.performanceService.submitManagerAppraisal(
-      assignmentId,
-      dto,
-    );
+    return this.performanceService.submitManagerAppraisal(assignmentId, dto);
   }
 
   // ================
-  // HR – PUBLISH APPRAISAL (single assignment)
+  // HR
   // ================
 
   @Post('hr/assignments/:assignmentId/publish')
@@ -129,8 +126,13 @@ export class PerformanceController {
     return this.performanceService.publishAppraisal(assignmentId);
   }
 
+  @Post('hr/disputes/:disputeId/resolve')
+  resolveDispute(@Param('disputeId') disputeId: string, @Body() dto: ResolveDisputeDto) {
+    return this.performanceService.resolveDispute(disputeId, dto);
+  }
+
   // ================
-  // EMPLOYEE – VIEW & ACK
+  // EMPLOYEE
   // ================
 
   @Get('employee/:employeeProfileId/appraisals')
@@ -138,10 +140,7 @@ export class PerformanceController {
     @Param('employeeProfileId') employeeProfileId: string,
     @Query('cycleId') cycleId?: string,
   ) {
-    return this.performanceService.getAppraisalsForEmployee(
-      employeeProfileId,
-      cycleId,
-    );
+    return this.performanceService.getAppraisalsForEmployee(employeeProfileId, cycleId);
   }
 
   @Get('employee/appraisals/:assignmentId')
@@ -154,36 +153,13 @@ export class PerformanceController {
     return this.performanceService.acknowledgeAppraisal(assignmentId);
   }
 
-  // ================
-  // EMPLOYEE – DISPUTE
-  // ================
-
-  @Post('employee/appraisals/:assignmentId/dispute')
+  // ✅ FIXED: employeeProfileId is a param, DTO stays clean
+  @Post('employee/:employeeProfileId/appraisals/:assignmentId/dispute')
   submitDispute(
     @Param('assignmentId') assignmentId: string,
-    @Body()
-    dto: {
-      employeeProfileId: string;
-      reason: string;
-      employeeComments?: string;
-    },
+    @Param('employeeProfileId') employeeProfileId: string,
+    @Body() dto: SubmitDisputeDto,
   ) {
-    return this.performanceService.submitDispute(
-      assignmentId,
-      dto.employeeProfileId,
-      { reason: dto.reason, employeeComments: dto.employeeComments },
-    );
-  }
-
-  // ================
-  // HR – RESOLVE DISPUTE
-  // ================
-
-  @Post('hr/disputes/:disputeId/resolve')
-  resolveDispute(
-    @Param('disputeId') disputeId: string,
-    @Body() dto: ResolveDisputeDto,
-  ) {
-    return this.performanceService.resolveDispute(disputeId, dto);
+    return this.performanceService.submitDispute(assignmentId, employeeProfileId, dto);
   }
 }
