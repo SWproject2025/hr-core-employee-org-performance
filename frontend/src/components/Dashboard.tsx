@@ -1,6 +1,10 @@
+"use client";
 import { Briefcase, ChevronRight, Clock, DollarSign, TrendingUp, Users } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 const Dashboard = () => {
+  const { user } = useAuth();
+  
   const stats = [
     {
       title: 'Total Employees',
@@ -59,11 +63,13 @@ const Dashboard = () => {
     { title: 'Performance Reviews', description: '8 pending reviews', icon: TrendingUp, color: 'text-orange-600' }
   ];
 
+  if (!user) return null;
+
   return (
-    <div className="p-6 bg-gray-50 min-h-screen max-w-7xl">
+    <div className="p-6 bg-gray-50 min-h-full max-w-7xl mx-auto">
       <div className="mb-6">
         <h2 className="text-2xl font-semibold text-gray-800 mb-1">Dashboard Overview</h2>
-        <p className="text-gray-500 text-sm">Welcome back! Here's what's happening with your HR operations today.</p>
+        <p className="text-gray-500 text-sm">Welcome back, {user.firstName || 'User'}! Here&apos;s what&apos;s happening with your HR operations today.</p>
       </div>
       
       {/* Stats Grid */}

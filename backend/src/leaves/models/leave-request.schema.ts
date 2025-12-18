@@ -53,6 +53,15 @@ export class LeaveRequest {
   status: LeaveStatus;
 
   @Prop({ default: false })
+  isPostLeave: boolean; // True if submitted after leave start date
+
+  @Prop()
+  escalatedAt?: Date; // When request was auto-escalated
+
+  @Prop({ type: Types.ObjectId, ref: 'EmployeeProfile' })
+  delegatedBy?: Types.ObjectId; // If approved by delegate
+
+  @Prop({ default: false })
   irregularPatternFlag: boolean;
 }
 

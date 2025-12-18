@@ -1,132 +1,133 @@
-'use client';
-
-import { useEffect, useState } from 'react';
+"use client"
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EmployeeService } from '@/services/employee.service';
-import { Loader2 } from 'lucide-react';
+import { authFetch, logout } from '../../../lib/auth';
 import toast from 'react-hot-toast';
 
-// ✅ CORRECT IMPORTS based on your file paths
-// Go up one level (..) to find ProfileHeader and ContactForm
-import { ProfileHeader } from '../ProfileHeader';
-import { ContactForm } from '../ContactForm'; 
-
-export default function MyProfilePage() {
-  const [profile, setProfile] = useState<any | null>(null);
-  const [role, setRole] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function EmployeeProfilePage() {
   const router = useRouter();
-
-  const fetchProfile = async () => {
-    try {
-      const data = await EmployeeService.getMe();
-      setProfile(data.profile);
-      setRole(data.role);
-    } catch (error: any) {
-      console.error("Fetch profile error", error);
-      
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        router.push('/employee/login');
-        return;
-      }
-      
-      toast.error("Failed to load profile.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [profile, setProfile] = useState<any>(null);
+  const [roleData, setRoleData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    const loadProfile = async () => {
+      try {
+        const res = await authFetch('http://localhost:3000/employee-profile/me');
+        if (!res.ok) {
+           logout();
+           router.push('/login');
+           return;
+        }
+        const data = await res.json();
+        setProfile(data.profile);
+        setRoleData(data.role);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadProfile();
+  }, [router]);
 
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center text-blue-600">
-        <Loader2 className="animate-spin h-10 w-10" />
-      </div>
-    );
-  }
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
 
-  if (!profile) {
-    return (
-      <div className="p-8 text-center text-red-500">
-        <h2 className="text-xl font-bold">Profile Not Found</h2>
-        <p>We could not retrieve your user data.</p>
-      </div>
-    );
-  }
+  // Helper to check if user is Admin
+  const isAdmin = roleData?.roles?.some((r: string) => 
+    ['ADMIN', 'System Admin', 'HR Admin'].includes(r)
+  );
+
+  if (loading) return <div className="p-10 text-center">Loading Profile...</div>;
+  if (!profile) return <div className="p-10 text-center text-red-500">Profile not found.</div>;
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      {/* 1. Header Section */}
-      <ProfileHeader profile={profile} refreshProfile={fetchProfile} />
+    <div className="min-h-screen bg-gray-50">
+      <nav className="bg-blue-900 text-white p-4 shadow flex justify-between items-center">
+        <div className="font-bold text-xl tracking-wide">HR Portal</div>
+        <div className="flex items-center gap-4">
+           <span className="text-sm opacity-90">Welcome, {profile.firstName}</span>
+           <button onClick={handleLogout} className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded text-sm font-bold transition shadow-sm">
+             Logout
+           </button>
+        </div>
+      </nav>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left Column: Contact & Employment Data */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Contact Form */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Contact Information</h2>
-            <ContactForm profile={profile} />
-          </div>
-
-          {/* Employment Details */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Core Employment Data</h2>
-            <div className="grid grid-cols-2 gap-y-4 text-sm">
-              <div>
-                <p className="text-gray-500">Date of Hire/Application</p>
-                <p className="font-medium">
-                  {profile.dateOfHire 
-                    ? new Date(profile.dateOfHire).toLocaleDateString() 
-                    : (profile.applicationDate ? new Date(profile.applicationDate).toLocaleDateString() : '-')}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-500">National ID</p>
-                <p className="font-medium">{profile.nationalId}</p>
-              </div>
-              <div>
-                <p className="text-gray-500">Department</p>
-                <p className="font-medium">{profile.primaryDepartmentId || 'Not Assigned'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500">Position</p>
-                <p className="font-medium">{profile.primaryPositionId || 'Not Assigned'}</p>
+      <div className="max-w-5xl mx-auto p-6">
+        {/* Header Card */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6 flex items-center justify-between relative overflow-hidden">
+          <div className="bg-blue-600 absolute top-0 left-0 w-full h-2"></div>
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center text-2xl font-bold text-gray-500">
+              {profile.firstName.charAt(0)}{profile.lastName.charAt(0)}
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">{profile.firstName} {profile.lastName}</h1>
+              <p className="text-gray-500 text-sm">#{profile.employeeNumber} • {profile.personalEmail}</p>
+              <div className="mt-2">
+                 <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold uppercase">{profile.status}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Roles & Bio */}
-        <div className="space-y-6">
-          
-          {/* System Roles */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">System Roles</h2>
-            {role?.roles && role.roles.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {role.roles.map((r: string, i: number) => (
-                  <span key={i} className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold uppercase">
-                    {r}
-                  </span>
-                ))}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 space-y-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Contact Information</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs text-gray-400 uppercase font-bold">Work Email</label><p className="text-gray-700">{profile.workEmail || 'Not Assigned'}</p></div>
+                <div><label className="text-xs text-gray-400 uppercase font-bold">Personal Email</label><p className="text-gray-700">{profile.personalEmail}</p></div>
+                <div><label className="text-xs text-gray-400 uppercase font-bold">Mobile</label><p className="text-gray-700">{profile.mobilePhone || '—'}</p></div>
+                <div><label className="text-xs text-gray-400 uppercase font-bold">National ID</label><p className="text-gray-700">{profile.nationalId || '—'}</p></div>
               </div>
-            ) : (
-              <p className="text-gray-500 text-sm">No specific system roles assigned.</p>
-            )}
+            </div>
           </div>
 
-          {/* Bio */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Biography</h2>
-            <p className="text-gray-600 text-sm leading-relaxed">
-              {profile.biography || "No biography provided."}
-            </p>
+          <div className="space-y-6">
+            {/* Quick Actions Card */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="font-bold text-gray-800 mb-4">Quick Actions</h3>
+              <div className="space-y-3">
+                <button 
+                  onClick={() => router.push('/employee/request')} 
+                  className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition shadow font-medium"
+                >
+                  + Submit Request
+                </button>
+                
+                <button 
+                  onClick={() => alert("Edit Profile Coming Soon")} 
+                  className="w-full bg-white border border-gray-300 text-gray-700 py-2 rounded hover:bg-gray-50 transition font-medium"
+                >
+                  Edit My Profile
+                </button>
+
+                {/* ADMIN BUTTON: Only shows if user is Admin */}
+                {isAdmin && (
+                  <button 
+                    onClick={() => router.push('/admin')} 
+                    className="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700 transition shadow font-medium mt-4"
+                  >
+                    Go to Admin Dashboard →
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="font-bold text-gray-800 mb-2">System Roles</h3>
+              {roleData?.roles?.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {roleData.roles.map((r: string, idx: number) => (
+                    <span key={idx} className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold uppercase">{r}</span>
+                  ))}
+                </div>
+              ) : <p className="text-gray-400 text-sm">No specific system roles assigned.</p>}
+            </div>
           </div>
         </div>
       </div>

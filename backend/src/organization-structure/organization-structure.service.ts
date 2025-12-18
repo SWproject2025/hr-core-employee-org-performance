@@ -12,6 +12,10 @@ import {
   JobRequisition,
   JobRequisitionDocument,
 } from './models/job-requisition.schema';
+import {
+  PositionAssignment,
+  PositionAssignmentDocument,
+} from './models/position-assignment.schema';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { CreatePositionDto } from './dto/create-position.dto';
@@ -28,6 +32,8 @@ export class OrganizationStructureService {
     private readonly positionModel: Model<PositionDocument>,
     @InjectModel(JobRequisition.name)
     private readonly jobReqModel: Model<JobRequisitionDocument>,
+    @InjectModel(PositionAssignment.name)
+    private readonly positionAssignmentModel: Model<any>,
   ) {}
 
   // Departments
@@ -369,5 +375,53 @@ export class OrganizationStructureService {
       throw new NotFoundException('Job requisition not found');
     }
     return jobReq;
+  }
+
+  /**
+   * Get the employee currently holding a specific position
+   * Used by Leaves module to find manager
+   */
+  async getEmployeeHoldingPosition(positionId: string): Promise<string | null> {
+    const assignment = await this.positionAssignmentModel.findOne({
+      positionId: new Types.ObjectId(positionId),
+      endDate: null, // Active assignment
+    }).sort({ startDate: -1 }).exec();
+
+    return assignment ? assignment.employeeProfileId.toString() : null;
+  }
+
+  /**
+   * Get direct reports for a manager (employeeId)
+   * REQ-020: Used for routing requests to Line Manager
+   */
+  async getDirectReports(managerId: string): Promise<string[]> {
+      // 1. Find Manager's Active Position
+      const managerAssignment = await this.positionAssignmentModel.findOne({
+          employeeProfileId: new Types.ObjectId(managerId),
+          endDate: null
+      }).exec();
+
+      if (!managerAssignment) return []; // Manager has no active position
+
+      const managerPositionId = managerAssignment.positionId;
+
+      // 2. Find Positions that report to this Position which are ACTIVE
+      // We need to query PositionModel
+      const reportingPositions = await this.positionModel.find({
+          reportingLine: managerPositionId,
+          active: true
+      }).select('_id').exec();
+
+      if (reportingPositions.length === 0) return [];
+
+      const positionIds = reportingPositions.map(p => p._id);
+
+      // 3. Find Employees assigned to those positions (Active)
+      const reportAssignments = await this.positionAssignmentModel.find({
+          positionId: { $in: positionIds },
+          endDate: null
+      }).select('employeeProfileId').exec();
+
+      return reportAssignments.map(a => a.employeeProfileId.toString());
   }
 }

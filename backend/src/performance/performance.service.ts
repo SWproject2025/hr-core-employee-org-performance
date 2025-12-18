@@ -92,6 +92,27 @@ export class PerformanceService {
     return this.templateModel.findByIdAndUpdate(id, dto, { new: true }).exec();
   }
 
+  // ✅ NEW: Delete template (with safety check)
+  async removeTemplate(id: string) {
+    const usedInAssignments = await this.assignmentModel
+      .exists({ templateId: id as any })
+      .exec();
+
+    if (usedInAssignments) {
+      throw new BadRequestException(
+        'Cannot delete template: it is used in appraisal assignments.',
+      );
+    }
+
+    const deleted = await this.templateModel.findByIdAndDelete(id).exec();
+
+    if (!deleted) {
+      throw new NotFoundException('Template not found');
+    }
+
+    return { message: 'Template deleted successfully', id };
+  }
+
   // =======================
   // CYCLES + AUTO ASSIGNMENTS
   // =======================
@@ -164,6 +185,7 @@ export class PerformanceService {
     }
 
     cycle.status = AppraisalCycleStatus.PUBLISHED;
+    // @ts-ignore
     cycle.publishedAt = new Date();
     await cycle.save();
 
@@ -181,6 +203,7 @@ export class PerformanceService {
     }
 
     cycle.status = AppraisalCycleStatus.CLOSED;
+    // @ts-ignore
     cycle.closedAt = new Date();
     await cycle.save();
 
@@ -198,6 +221,7 @@ export class PerformanceService {
     }
 
     cycle.status = AppraisalCycleStatus.ARCHIVED;
+    // @ts-ignore
     cycle.archivedAt = new Date();
     await cycle.save();
 
@@ -216,7 +240,7 @@ export class PerformanceService {
     if (!seeds || seeds.length === 0) return;
 
     for (const seed of seeds) {
-      // @ts-ignore - in case DTO typing isn't updated yet
+      // @ts-ignore
       if (!seed.departmentId) {
         throw new BadRequestException(
           'seedingAssignments[].departmentId is required (AppraisalAssignment schema requires departmentId).',
@@ -230,7 +254,7 @@ export class PerformanceService {
       employeeProfileId: seed.employeeProfileId,
       managerProfileId: seed.managerProfileId,
 
-      // @ts-ignore - remove after updating SeedAssignmentDto
+      // @ts-ignore
       departmentId: seed.departmentId,
 
       status: AppraisalAssignmentStatus.NOT_STARTED,
@@ -287,7 +311,6 @@ export class PerformanceService {
       throw new NotFoundException('Appraisal assignment not found');
     }
 
-    // Enforce cycle phase: must be ACTIVE
     const cycle = await this.cycleModel.findById(assignment.cycleId).exec();
     if (!cycle) throw new NotFoundException('Cycle not found');
 
@@ -297,7 +320,6 @@ export class PerformanceService {
       );
     }
 
-    // Enforce manager due date (if set)
     if (cycle.managerDueDate) {
       const now = new Date();
       if (now > new Date(cycle.managerDueDate)) {
@@ -313,7 +335,7 @@ export class PerformanceService {
       ![
         AppraisalAssignmentStatus.NOT_STARTED,
         AppraisalAssignmentStatus.IN_PROGRESS,
-        AppraisalAssignmentStatus.SUBMITTED, // allow resubmit if needed
+        AppraisalAssignmentStatus.SUBMITTED,
       ].includes(assignment.status)
     ) {
       throw new BadRequestException(
@@ -392,12 +414,12 @@ export class PerformanceService {
     const record = await this.getLatestRecordForAssignment(assignment);
 
     record.status = AppraisalRecordStatus.HR_PUBLISHED;
-    // @ts-ignore - if schema doesn't currently include hrPublishedAt
+    // @ts-ignore
     record.hrPublishedAt = new Date();
     await record.save();
 
     assignment.status = AppraisalAssignmentStatus.PUBLISHED;
-    // @ts-ignore - if schema doesn't currently include publishedAt
+    // @ts-ignore
     assignment.publishedAt = new Date();
     await assignment.save();
 
@@ -462,7 +484,6 @@ export class PerformanceService {
     const cycle = await this.cycleModel.findById(assignment.cycleId).exec();
     if (!cycle) throw new NotFoundException('Cycle not found');
 
-    // Enforce acknowledgement due date (if set)
     if (cycle.employeeAcknowledgementDueDate) {
       const now = new Date();
       if (now > new Date(cycle.employeeAcknowledgementDueDate)) {
@@ -475,7 +496,7 @@ export class PerformanceService {
     }
 
     assignment.status = AppraisalAssignmentStatus.ACKNOWLEDGED;
-    // @ts-ignore - if schema doesn't currently include employeeAcknowledgedAt
+    // @ts-ignore
     assignment.employeeAcknowledgedAt = new Date();
     await assignment.save();
 
@@ -511,7 +532,6 @@ export class PerformanceService {
     const cycle = await this.cycleModel.findById(assignment.cycleId).exec();
     if (!cycle) throw new NotFoundException('Cycle not found');
 
-    // ✅ Disputes are only allowed after the cycle is PUBLISHED
     if (cycle.status !== AppraisalCycleStatus.PUBLISHED) {
       throw new BadRequestException(
         `Disputes are only allowed when cycle is PUBLISHED. Current: ${cycle.status}`,
@@ -536,7 +556,7 @@ export class PerformanceService {
     });
 
     assignment.status = AppraisalAssignmentStatus.UNDER_DISPUTE;
-    // @ts-ignore - if schema doesn't currently include disputeId
+    // @ts-ignore
     assignment.disputeId = dispute._id;
     await assignment.save();
 
@@ -572,7 +592,7 @@ export class PerformanceService {
 
     dispute.status = dto.status;
     (dispute as any).hrDecisionNotes = dto.hrDecisionNotes;
-    // @ts-ignore - if schema doesn't currently include resolvedAt
+    // @ts-ignore
     (dispute as any).resolvedAt = new Date();
     await dispute.save();
 

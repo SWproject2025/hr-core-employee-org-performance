@@ -1,56 +1,44 @@
-export async function login(email: string, password: string) {
-  const res = await fetch('http://localhost:3000/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
+import Cookies from 'js-cookie';
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || 'Login failed');
+// 1. Login: Save the token to a cookie
+export const login = (token: string) => {
+  // Save cookie for 1 day
+  Cookies.set('token', token, { expires: 1 });
+};
+
+// 2. Logout: Remove the cookie
+export const logout = () => {
+  Cookies.remove('token');
+  // Optional: Redirect to login if called explicitly
+  if (typeof window !== 'undefined') {
+    window.location.href = '/login';
   }
+};
 
-  const data = await res.json();
-  if (data.access_token) {
-    localStorage.setItem('access_token', data.access_token);
-  }
-  return data;
-}
+// 3. Get Token: Retrieve from cookie
+export const getToken = () => {
+  return Cookies.get('token');
+};
 
-export async function register(payload: any) {
-  const res = await fetch('http://localhost:3000/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || 'Registration failed');
-  }
-
-  return res.json();
-}
-
-export function getToken() {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('access_token');
-}
-
-export function logout() {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem('access_token');
-}
-
-export function getAuthHeaders() {
+// 4. AuthFetch: Wrapper for fetch that adds the Authorization header automatically
+export const authFetch = async (url: string, options: any = {}) => {
   const token = getToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
-}
 
-export async function authFetch(input: RequestInfo, init?: RequestInit) {
-  const headers = { ...(init?.headers || {}), ...getAuthHeaders() } as Record<string, string>;
-  const res = await fetch(input, { ...(init || {}), headers });
-  return res;
-}
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  // Auto-logout if token is invalid (401)
+  if (response.status === 401) {
+    logout();
+  }
+
+  return response;
+};

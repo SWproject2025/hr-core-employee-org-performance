@@ -20,8 +20,29 @@ import {
 } from './models/leave-adjustment.schema';
 import { Calendar, CalendarSchema } from './models/calendar.schema';
 import { Attachment, AttachmentSchema } from './models/attachment.schema';
+import { LeaveAttachment, LeaveAttachmentSchema } from './models/leave-attachment.schema';
+import { LeaveBlockPeriod, LeaveBlockPeriodSchema } from './models/leave-block-period.schema';
+import { LeaveDelegation, LeaveDelegationSchema } from './models/leave-delegation.schema';
+import { LeaveAttachmentsController } from './controllers/leave-attachments.controller';
+import { LeavePolicyController } from './controllers/leave-policy.controller';
+import { AttachmentsController } from './controllers/attachments.controller';
+import { LeaveValidationService } from './services/leave-validation.service';
+import { LeavesCronService } from './services/leaves-cron.service';
+import { LeavePolicyService } from './services/leave-policy.service';
+import { AttachmentsService } from './services/attachments.service';
+import { IntegrationService } from './services/integration.service';
+import { LeaveEntitlementService } from './services/leave-entitlement.service';
+import { LeaveEntitlementController } from './controllers/leave-entitlement.controller';
+import { MonthlyAccrualService } from './services/monthly-accrual.service';
 import { EmployeeProfileModule } from '../employee-profile/employee-profile.module';
+
+
 import { TimeManagementModule } from '../time-management/time-management.module';
+import { PatternDetectionService } from './services/pattern-detection.service';
+import { PayrollExecutionModule } from '../payroll-execution/payroll-execution.module';
+import { EmailModule } from '../Common/email/email.module';
+import { LeaveSettlementService } from './services/leave-settlement.service';
+import { OrganizationStructureModule } from '../organization-structure/organization-structure.module';
 
 @Module({
   imports: [
@@ -34,12 +55,21 @@ import { TimeManagementModule } from '../time-management/time-management.module'
       { name: LeaveAdjustment.name, schema: LeaveAdjustmentSchema },
       { name: Calendar.name, schema: CalendarSchema },
       { name: Attachment.name, schema: AttachmentSchema },
+      { name: LeaveAttachment.name, schema: LeaveAttachmentSchema },
+      { name: LeaveBlockPeriod.name, schema: LeaveBlockPeriodSchema },
+      { name: LeaveDelegation.name, schema: LeaveDelegationSchema },
     ]),
     EmployeeProfileModule,
     TimeManagementModule,
+    OrganizationStructureModule, // Added for manager lookup
+    PayrollExecutionModule,      // Added for payroll sync
+    EmailModule,
   ],
-  controllers: [LeavesController],
-  providers: [LeavesService],
-  exports: [LeavesService],
+  controllers: [LeavesController, LeaveAttachmentsController, LeavePolicyController, AttachmentsController, LeaveEntitlementController],
+  providers: [LeavesService, LeaveValidationService, LeavesCronService, LeaveSettlementService, LeavePolicyService, AttachmentsService, IntegrationService, LeaveEntitlementService, MonthlyAccrualService, PatternDetectionService],
+  exports: [LeavesService, LeaveSettlementService, MonthlyAccrualService, PatternDetectionService],
 })
 export class LeavesModule {}
+
+
+

@@ -26,6 +26,6 @@ export const AuthService = {
 
   logout: () => {
     localStorage.removeItem('access_token');
-    window.location.href = '/employee/login';
+    window.location.href = '/login';
   }
 };
