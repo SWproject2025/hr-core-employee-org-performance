@@ -1,3 +1,5 @@
+// backend/src/performance/dto/create-appraisal-template.dto.ts
+
 import {
   AppraisalRatingScaleType,
   AppraisalTemplateType,
@@ -7,6 +9,10 @@ export class RatingScaleDefinitionDto {
   type: AppraisalRatingScaleType;
   min: number;
   max: number;
+
+  // ✅ add these to match schema
+  step?: number;
+  labels?: string[];
 }
 
 export class EvaluationCriterionDto {
@@ -30,7 +36,6 @@ export class CreateAppraisalTemplateDto {
 
   instructions?: string;
 
-  // Mongo ObjectIds as strings – Mongoose will cast
   applicableDepartmentIds?: string[];
   applicablePositionIds?: string[];
 
