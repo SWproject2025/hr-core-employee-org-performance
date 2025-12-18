@@ -58,7 +58,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     try {
       await AuthService.register(payload);
       toast.success('Application submitted successfully!');
-      router.push('/employee/login');
+      router.push('/login');
     } catch (error: any) {
       console.error(error);
       const message = error.response?.data?.message || 'Registration failed';

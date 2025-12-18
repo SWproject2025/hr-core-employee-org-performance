@@ -17,6 +17,9 @@ export class AuthController {
   // Endpoint to create an initial user for testing
   @Post('register')
   async register(@Body() registerDto: any) {
+  // 👇 Add this line
+    console.log('HIT: Register endpoint reached!', registerDto); 
+  
     return this.authService.register(registerDto);
   }
 }

@@ -327,6 +327,8 @@ async promoteToEmployee(candidateId: string): Promise<EmployeeProfile> {
 
     return savedEmployee;
   }
+  
+  // --- 14. Get All Pending Requests (Admin View) ---
   async getAllPendingRequests(): Promise<EmployeeProfileChangeRequest[]> {
     return this.changeRequestModel.find({ status: 'PENDING' })
       .populate('employeeProfileId', 'firstName lastName employeeNumber') // Join with user details
@@ -341,6 +343,7 @@ async promoteToEmployee(candidateId: string): Promise<EmployeeProfile> {
       .sort({ submittedAt: -1 })
       .exec();
   }
+  
   async updateRequestStatus(requestId: string, status: 'APPROVED' | 'REJECTED') {
     return this.changeRequestModel.findByIdAndUpdate(
       requestId,

@@ -1,15 +1,15 @@
 import axios from 'axios';
 
-// 🛑 STOP: Do not use relative paths like '/auth'
-// ✅ GO: Use the full http://localhost:3000/auth address
-const API_URL = 'http://localhost:3000/auth'; 
+// 1. Point to Port 3001 (Backend)
+// 2. Do NOT include '/auth' here to avoid confusion/doubling
+const API_BASE_URL = 'http://localhost:3000'; 
 
 export const AuthService = {
   login: async (credentials: any) => {
-    // This logs where we are sending the request (for debugging)
-    console.log(`Sending Login to: ${API_URL}/login`); 
+    // URL becomes: http://localhost:3001/auth/login
+    console.log(`Sending Login to: ${API_BASE_URL}/auth/login`); 
     
-    const { data } = await axios.post(`${API_URL}/login`, credentials);
+    const { data } = await axios.post(`${API_BASE_URL}/auth/login`, credentials);
     if (data.access_token) {
       localStorage.setItem('access_token', data.access_token);
     }
@@ -17,10 +17,10 @@ export const AuthService = {
   },
 
   register: async (userData: any) => {
-    // This logs where we are sending the request
-    console.log(`Sending Register to: ${API_URL}/register`);
+    // URL becomes: http://localhost:3001/auth/register
+    console.log(`Sending Register to: ${API_BASE_URL}/auth/register`);
 
-    const { data } = await axios.post(`${API_URL}/register`, userData);
+    const { data } = await axios.post(`${API_BASE_URL}/auth/register`, userData);
     return data;
   },
 
