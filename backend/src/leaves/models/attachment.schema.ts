@@ -3,7 +3,7 @@ import { HydratedDocument } from 'mongoose';
 
 export type AttachmentDocument = HydratedDocument<Attachment>;
 
-@Schema({ timestamps: true })
+@Schema({ collection: 'attachments', timestamps: true })
 export class Attachment {
   @Prop({ required: true })
   originalName: string;

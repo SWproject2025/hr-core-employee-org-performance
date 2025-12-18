@@ -1,9 +1,13 @@
+/* eslint-disable prettier/prettier */
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { paySlip, PayslipDocument } from '../payroll-execution/models/payslip.schema';
 import { employeePayrollDetails, employeePayrollDetailsDocument } from '../payroll-execution/models/employeePayrollDetails.schema';
-import { payrollRuns, payrollRunsDocument } from '../payroll-execution/models/payrollRuns.schema';
+import {
+  payrollRuns,
+  payrollRunsDocument,
+} from '../payroll-execution/models/payrollRuns.schema';
 import { EmployeeProfile, EmployeeProfileDocument } from '../employee-profile/models/employee-profile.schema';
 import { PayslipQueryDto } from './dto/payslips/payslip-query.dto';
 import { PayslipDownloadDto } from './dto/payslips/payslip-download.dto';
@@ -121,7 +125,7 @@ export class PayrollTrackingService {
             page = 1,
             limit = 10,
             sortBy = 'createdAt',
-            sortOrder = 'desc',
+      sortOrder = 'desc',
         } = filters;
 
         const query: any = {

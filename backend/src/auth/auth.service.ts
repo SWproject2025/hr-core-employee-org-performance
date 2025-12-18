@@ -1,116 +1,48 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import * as bcrypt from 'bcrypt';
-import { EmployeeProfile, EmployeeProfileDocument } from '../employee-profile/models/employee-profile.schema';
-import { EmployeeSystemRole, EmployeeSystemRoleDocument } from '../employee-profile/models/employee-system-role.schema';
-import { SystemRole, EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
-import { JwtPayload } from './strategies/jwt.strategy';
-import { RegisterDto } from './auth.controller';
+import { EmployeeProfile } from '../employee-profile/models/employee-profile.schema';
 
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel(EmployeeProfile.name)
-    private employeeProfileModel: Model<EmployeeProfileDocument>,
-    @InjectModel(EmployeeSystemRole.name)
-    private employeeSystemRoleModel: Model<EmployeeSystemRoleDocument>,
+    @InjectModel(EmployeeProfile.name) private employeeModel: Model<EmployeeProfile>,
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(nationalId: string, password: string): Promise<any> {
-    const employeeProfile = await this.employeeProfileModel.findOne({ nationalId });
-
-    if (!employeeProfile || !employeeProfile.password) {
-      throw new UnauthorizedException('Invalid credentials');
+  // 1. Validate User Credentials
+  async validateUser(email: string, pass: string): Promise<any> {
+    // Explicitly select password since it's hidden by default
+    const user = await this.employeeModel.findOne({ email }).select('+password');
+    
+    if (user && user.password && (await bcrypt.compare(pass, user.password))) {
+      const { password, ...result } = user.toObject();
+      return result;
     }
-
-    const isPasswordValid = await bcrypt.compare(password, employeeProfile.password);
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const systemRole = await this.employeeSystemRoleModel.findOne({
-      employeeProfileId: employeeProfile._id,
-      isActive: true,
-    });
-
-    return {
-      employeeProfileId: employeeProfile._id.toString(),
-      nationalId: employeeProfile.nationalId,
-      roles: systemRole?.roles || [],
-      permissions: systemRole?.permissions || [],
-    };
+    return null;
   }
 
+  // 2. Login (Generate Token)
   async login(user: any) {
-    const payload: JwtPayload = {
-      sub: user.employeeProfileId,
-      nationalId: user.nationalId,
-      roles: user.roles,
+    const payload = { 
+        email: user.email, 
+        sub: user._id,
+        roles: user.roles // Assuming your EmployeeProfile has a 'roles' field
     };
-
     return {
       access_token: this.jwtService.sign(payload),
-      user: {
-        employeeProfileId: user.employeeProfileId,
-        nationalId: user.nationalId,
-        roles: user.roles,
-      },
     };
   }
 
-  async hashPassword(password: string): Promise<string> {
-    const saltRounds = 10;
-    return bcrypt.hash(password, saltRounds);
-  }
-
-  async register(registerDto: RegisterDto): Promise<any> {
-    // Check if user already exists
-    const existingUser = await this.employeeProfileModel.findOne({
-      $or: [
-        { nationalId: registerDto.nationalId },
-        { employeeNumber: registerDto.employeeNumber },
-      ],
+  // 3. Register (Optional helper for seeding/testing)
+  async register(registerDto: any) {
+    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    const newUser = new this.employeeModel({
+        ...registerDto,
+        password: hashedPassword
     });
-
-    if (existingUser) {
-      throw new ConflictException('User with this national ID or employee number already exists');
-    }
-
-    // Hash password
-    const hashedPassword = await this.hashPassword(registerDto.password);
-
-    // Create employee profile
-    const employeeProfile = await this.employeeProfileModel.create({
-      firstName: registerDto.firstName,
-      lastName: registerDto.lastName,
-      fullName: `${registerDto.firstName} ${registerDto.lastName}`,
-      nationalId: registerDto.nationalId,
-      password: hashedPassword,
-      employeeNumber: registerDto.employeeNumber,
-      dateOfHire: new Date(),
-      status: EmployeeStatus.ACTIVE,
-      workEmail: registerDto.workEmail,
-      personalEmail: registerDto.personalEmail,
-    });
-
-    // Create default system role (Department Employee)
-    const systemRole = await this.employeeSystemRoleModel.create({
-      employeeProfileId: employeeProfile._id,
-      roles: [SystemRole.DEPARTMENT_EMPLOYEE],
-      permissions: [],
-      isActive: true,
-    });
-
-    return {
-      employeeProfileId: employeeProfile._id.toString(),
-      nationalId: employeeProfile.nationalId,
-      roles: systemRole.roles,
-      permissions: systemRole.permissions,
-    };
+    return newUser.save();
   }
 }
-

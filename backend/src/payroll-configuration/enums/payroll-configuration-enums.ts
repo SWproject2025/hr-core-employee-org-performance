@@ -1,7 +1,8 @@
 export enum ConfigStatus {
     DRAFT = 'draft',
     APPROVED = 'approved',
-    REJECTED = 'rejected'
+    REJECTED = 'rejected',
+    PENDING = 'pending'
 }
 
 export enum PolicyType {
@@ -19,3 +20,11 @@ export enum Applicability {
     PART_TIME = "Part Time Employees",
     CONTRACTORS = "Contractors",
 }
+
+// export enum UserRole {
+//     PAYROLL_SPECIALIST = "Payroll_Specialist",
+//     HR_MANAGER = "HR_Manager",
+//     PAYROLL_MANAGER = "Payroll_Manager",
+//     SYS_ADMIN = "System_Admin",
+//     POLICY_ADMIN = "Policy_Admin",
+// } already defined in employee-profile.enums.ts

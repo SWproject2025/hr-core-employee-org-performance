@@ -1,11 +1,10 @@
-
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { AttachmentType } from '../enums/attachment-type.enum';
 
 export type LeaveTypeDocument = HydratedDocument<LeaveType>;
 
-@Schema({ timestamps: true })
+@Schema({ collection: 'leave_types', timestamps: true })
 export class LeaveType {
   @Prop({ required: true, unique: true })
   code: string;

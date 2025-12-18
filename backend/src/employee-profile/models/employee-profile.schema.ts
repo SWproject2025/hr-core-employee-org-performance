@@ -44,6 +44,7 @@ export class EmployeeProfile extends UserProfileBase {
   @Prop({ type: String })
   bankAccountNumber?: string;
 
+  
   @Prop({
     type: String,
     enum: Object.values(ContractType),
