@@ -153,7 +153,7 @@ export class LeavesController {
    * REQ-020: Manager views pending requests
    */
   @Get('requests/pending-approval')
-  @Roles(SystemRole.DEPARTMENT_HEAD)
+  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
   async getPendingLeaveRequests(
     @CurrentUser() user: CurrentUserData,
     @Query('page') page?: string,
@@ -170,7 +170,7 @@ export class LeavesController {
    * REQ-021: Manager approves leave request
    */
   @Post('requests/:requestId/approve')
-  @Roles(SystemRole.DEPARTMENT_HEAD)
+  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
   async approveLeaveRequestByManager(
     @CurrentUser() user: CurrentUserData,
     @Param('requestId') requestId: string,
@@ -188,7 +188,7 @@ export class LeavesController {
    * REQ-022: Manager rejects leave request
    */
   @Post('requests/:requestId/reject')
-  @Roles(SystemRole.DEPARTMENT_HEAD)
+  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
   async rejectLeaveRequestByManager(
     @CurrentUser() user: CurrentUserData,
     @Param('requestId') requestId: string,
@@ -483,6 +483,30 @@ export class LeavesController {
     return {
       message: 'Calendar configured successfully',
       year,
+    };
+  }
+
+  // ==================== ANALYTICS ENDPOINTS ====================
+
+  /**
+   * Get irregular leave patterns for an employee
+   * Used by managers to flag irregular leave patterns
+   */
+  @Get('admin/analytics/patterns/:employeeId')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.DEPARTMENT_HEAD)
+  async getLeavePatterns(
+    @Param('employeeId') employeeId: string,
+  ) {
+    // Pattern analysis: check Monday/Friday frequency
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+    // This would call the pattern detection service
+    return {
+      employeeId,
+      analysisStartDate: threeMonthsAgo.toISOString(),
+      analysisEndDate: new Date().toISOString(),
+      message: 'Use PatternDetectionService.detectIrregularPatterns() for full analysis',
     };
   }
 }

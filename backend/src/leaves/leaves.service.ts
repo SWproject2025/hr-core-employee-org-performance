@@ -697,8 +697,8 @@ export class LeavesService {
         { path: 'employeeId', select: 'employeeNumber firstName lastName workEmail' },
       ]);
 
-      // TODO: Get delegated manager email from organization structure
-      const delegateEmail = 'delegate@company.com'; // Replace with actual lookup
+      // Get delegated manager email from organization structure
+      const delegateEmail = await this.integrationService.getManagerEmail(toManagerId) || 'hr@company.com';
       
       await this.emailService.sendDelegationNotification(
         delegateEmail,
@@ -845,9 +845,10 @@ export class LeavesService {
         
         // Position Check (if policy restricts certain positions)
          if (policy.eligibility.positionsAllowed && policy.eligibility.positionsAllowed.length > 0) {
-             // Assuming storing position names or IDs. If IDs, would need string comparison
-             // For now, skipping detailed position check as it requires deeper org structure lookup/comparison
-             // logic similar to contract type would go here
+             const employeePositionId = employee.primaryPositionId?.toString();
+             if (employeePositionId && !policy.eligibility.positionsAllowed.includes(employeePositionId)) {
+                 throw new BadRequestException(`This leave type is not available for your position.`);
+             }
          }
     }
   }

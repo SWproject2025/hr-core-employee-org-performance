@@ -3,7 +3,7 @@
  * Handles all leave-related API calls with consistent error handling and authentication
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 // Helper to get auth token
 const getToken = (): string => {
@@ -162,6 +162,26 @@ export const leavesService = {
     const params = leaveTypeId ? `?leaveTypeId=${leaveTypeId}` : '';
     return apiCall(`/leaves/admin/employees/${employeeId}/balance${params}`);
   },
+
+  // Get all entitlements
+  getAllEntitlements: (employeeId?: string, leaveTypeId?: string, page = 1, limit = 20) => {
+    const params = new URLSearchParams({
+      ...(employeeId && { employeeId }),
+      ...(leaveTypeId && { leaveTypeId }),
+      page: page.toString(),
+      limit: limit.toString(),
+    });
+    return apiCall<{ entitlements: any[]; pagination: any }>(
+      `/leaves/admin/entitlements?${params}`
+    );
+  },
+
+  // Update entitlement
+  updateEntitlement: (id: string, data: { yearlyEntitlement: number; carryForward: number }) =>
+    apiCall(`/leaves/admin/entitlements/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 
   // ==================== LEAVE POLICY ENDPOINTS ====================
 

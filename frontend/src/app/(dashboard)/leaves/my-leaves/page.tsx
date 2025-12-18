@@ -33,6 +33,17 @@ export default function MyLeavesPage() {
     }
   };
 
+  const handleCancelRequest = async (requestId: string) => {
+    if (!confirm('Are you sure you want to cancel this request?')) return;
+
+    try {
+      await leavesService.cancelLeaveRequest(requestId);
+      loadData(); // Refresh list
+    } catch (error: any) {
+      alert(error.message || 'Failed to cancel request');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -50,7 +61,7 @@ export default function MyLeavesPage() {
           <p className="text-gray-600 mt-1">Manage your leave balances and requests</p>
         </div>
         <button
-          onClick={() => router.push('/leaves/new-request')}
+          onClick={() => router.push('/leaves/request')}
           className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium shadow"
         >
           + Request New Leave
@@ -83,7 +94,11 @@ export default function MyLeavesPage() {
             <option value="CANCELLED">Cancelled</option>
           </select>
         </div>
-        <LeaveHistoryTable requests={requests} onUpdate={loadData} />
+        <LeaveHistoryTable 
+          requests={requests} 
+          onUpdate={loadData} 
+          onCancel={handleCancelRequest}
+        />
       </div>
     </div>
   );
