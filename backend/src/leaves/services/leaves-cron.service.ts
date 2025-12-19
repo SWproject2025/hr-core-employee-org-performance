@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
 import { LeaveRequest } from '../models/leave-request.schema';
 import { EmailService } from '../../Common/email/email.service';
 
@@ -9,11 +10,16 @@ import { EmailService } from '../../Common/email/email.service';
 
 @Injectable()
 export class LeavesCronService {
+  private readonly hrNotificationEmail: string;
+
   constructor(
     @InjectModel(LeaveRequest.name)
     private leaveRequestModel: Model<LeaveRequest>,
     private emailService: EmailService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    this.hrNotificationEmail = this.configService.get<string>('HR_NOTIFICATION_EMAIL') || 'hr@company.com';
+  }
 
   /**
    * REQ-028: Auto-escalate requests pending > 48 hours
@@ -67,7 +73,7 @@ export class LeavesCronService {
         // Ensure email service has this method or we use a generic internal method
         if (this.emailService.sendEscalationNotification) {
             await this.emailService.sendEscalationNotification(
-            'hr@company.com', // TODO: Get from config
+            this.hrNotificationEmail,
             employee.workEmail,
             `${employee.firstName} ${employee.lastName}`,
             leaveType.name,
@@ -86,12 +92,12 @@ export class LeavesCronService {
 
   /**
    * REQ-040: Monthly leave accrual
-   * Runs on 1st of every month at midnight
+   * Note: Monthly accrual is handled by MonthlyAccrualService which has its own @Cron decorator.
+   * This method is kept for any additional processing or logging needs.
    */
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async processMonthlyAccrual() {
-    console.log('📅 Processing monthly leave accrual...');
-    // This would call the accrual logic in LeavesService
-    // await this.leavesService.processMonthlyAccrual();
+    console.log('📅 Monthly leave accrual triggered - handled by MonthlyAccrualService');
+    // Actual accrual processing is done by MonthlyAccrualService
   }
 }

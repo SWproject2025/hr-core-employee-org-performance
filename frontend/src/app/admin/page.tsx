@@ -1,7 +1,7 @@
 "use client"
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authFetch, logout } from '../../lib/auth';
+import { authFetch, logout } from '@/lib/auth';
 import toast from 'react-hot-toast';
 
 export default function AdminDashboard() {
@@ -11,17 +11,13 @@ export default function AdminDashboard() {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. Load Data Function
   useEffect(() => {
     const loadAdminData = async () => {
       try {
-        // A. Verify Who Is Logged In
         const meRes = await authFetch('http://localhost:3000/employee-profile/me');
         if (!meRes.ok) throw new Error('Auth failed');
         const meData = await meRes.json();
         
-        // B. CHECK ROLES (The Fix)
-        // We convert everything to lowercase to avoid "HR Admin" vs "HR ADMIN" issues
         const userRoles = meData.role?.roles || [];
         const allowedRoles = ['admin', 'hr admin', 'system admin', 'hr manager'];
         
@@ -33,7 +29,6 @@ export default function AdminDashboard() {
           return;
         }
 
-        // C. Fetch Dashboard Data
         const empRes = await authFetch('http://localhost:3000/employee-profile/search?q=a');
         if (empRes.ok) setEmployees(await empRes.json());
 
@@ -52,7 +47,6 @@ export default function AdminDashboard() {
     loadAdminData();
   }, [router]);
 
-  // 2. Status Update (Hire/Reject)
   const updateStatus = async (id: string, status: 'HIRED' | 'REJECTED') => {
     try {
       const res = await fetch(`http://localhost:3000/employee-profile/${id}/status`, {
@@ -73,7 +67,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // 3. Promote/Onboard
   const handlePromote = async (id: string) => {
     if (!confirm("Are you sure you want to convert this candidate to an Employee?")) return;
 
@@ -95,7 +88,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // 4. Handle Request (Approve/Reject)
   const handleRequestAction = async (requestId: string, action: 'APPROVED' | 'REJECTED') => {
     try {
       const res = await fetch(`http://localhost:3000/employee-profile/request/${requestId}/status`, {
@@ -305,7 +297,6 @@ export default function AdminDashboard() {
           </tbody>
         </table>
       </div>
-
     </div>
   );
 }

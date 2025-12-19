@@ -1,7 +1,7 @@
 "use client"
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '../../../lib/auth'; // Adjust path to your auth helper if needed
+import { login } from '@/lib/auth';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -11,7 +11,6 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // 1. Send Login Request
       const res = await fetch('http://localhost:3000/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -20,11 +19,9 @@ export default function LoginPage() {
 
       if (res.ok) {
         const data = await res.json();
-        // 2. Save Token
         login(data.access_token);
         toast.success(`Welcome back, ${data.user.firstName}!`);
         
-        // 3. Redirect based on Role
         if (data.user.type === 'ADMIN' || data.user.type === 'HR ADMIN') {
            router.push('/admin');
         } else {
@@ -68,14 +65,12 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* 👇 THIS IS THE FIX */}
         <p className="mt-4 text-center text-sm text-gray-600">
           Don't have an account?{' '}
           <a href="/register" className="text-blue-600 hover:underline font-bold">
             Register here
           </a>
         </p>
-
       </div>
     </div>
   );

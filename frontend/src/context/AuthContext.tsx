@@ -10,10 +10,24 @@ interface User {
   lastName?: string;
 }
 
+// ✅ 1. Update Interface to match your Form
+interface RegisterData {
+  firstName: string;
+  lastName: string;
+  nationalId: string;
+  email: string;
+  password: string;
+  middleName?: string;
+  mobilePhone?: string;
+  gender?: string;
+  maritalStatus?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -22,7 +36,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -30,7 +44,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored token on mount
     if (typeof window !== 'undefined') {
       const storedToken = localStorage.getItem('token');
       const storedUser = localStorage.getItem('user');
@@ -49,9 +62,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [token]);
+
   const login = async (email: string, password: string) => {
     try {
-      // ✅ FIXED: Changed backticks to parentheses
       const response = await axios.post(`${API_URL}/auth/login`, {
         email,
         password,
@@ -63,8 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('No access token received');
       }
 
-      // Decode JWT token to get user info
-      // JWT format: header.payload.signature
       const tokenParts = access_token.split('.');
       if (tokenParts.length !== 3) {
         throw new Error('Invalid token format');
@@ -72,7 +90,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const payload = JSON.parse(atob(tokenParts[1]));
       
-      // Extract user info from token payload
       const userInfo: User = {
         employeeProfileId: payload.employeeProfileId || payload.sub || '',
         email: payload.email || email,
@@ -84,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(access_token);
       setUser(userInfo);
 
-      // Store in localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', access_token);
         localStorage.setItem('user', JSON.stringify(userInfo));
@@ -95,9 +111,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ✅ 2. Fix Register Function to use Dynamic Data
+  const register = async (data: RegisterData) => {
+    try {
+      const payload = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        nationalId: data.nationalId,
+        workEmail: data.email, 
+        personalEmail: data.email, 
+        password: data.password,
+        // Only include if they exist
+        ...(data.middleName && { middleName: data.middleName }),
+        ...(data.mobilePhone && { mobilePhone: data.mobilePhone }),
+        ...(data.gender && { gender: data.gender }),
+        ...(data.maritalStatus && { maritalStatus: data.maritalStatus }),
+      };
+
+      await axios.post(`${API_URL}/auth/register`, payload);
+      
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      // Pass the specific backend error message back to the UI
+      throw new Error(error.response?.data?.message || 'Registration failed');
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
+    delete axios.defaults.headers.common['Authorization'];
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -115,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         login,
+        register,
         logout,
         isAuthenticated: !!user && !!token,
         isLoading,

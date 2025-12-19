@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import leavesService from '@/lib/leavesService';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -55,17 +55,12 @@ export default function LeaveTypesPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const [typesRes, categoriesRes] = await Promise.all([
-        axios.get(`${API_URL}/leaves/types`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        axios.get(`${API_URL}/leaves/admin/categories`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      const [typesData, categoriesData] = await Promise.all([
+        leavesService.getLeaveTypes(),
+        leavesService.getLeaveCategories(),
       ]);
-      setTypes(typesRes.data.leaveTypes || []);
-      setCategories(categoriesRes.data || []);
+      setTypes(typesData.leaveTypes || []);
+      setCategories((categoriesData as any) || []);
     } catch (err: any) {
       setError('Failed to load data');
     } finally {
@@ -86,22 +81,17 @@ export default function LeaveTypesPage() {
     };
 
     try {
-      const token = localStorage.getItem('token');
       if (editingId) {
-        await axios.put(`${API_URL}/leaves/types/${editingId}`, payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await leavesService.updateLeaveType(editingId, payload);
         setSuccess('Leave type updated successfully');
       } else {
-        await axios.post(`${API_URL}/leaves/types`, payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await leavesService.createLeaveType(payload);
         setSuccess('Leave type created successfully');
       }
       fetchData();
       resetForm();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Operation failed');
+      setError(err.message || 'Operation failed');
     }
   };
 
@@ -125,12 +115,8 @@ export default function LeaveTypesPage() {
 
   const handleToggleActive = async (id: string, isActive: boolean) => {
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_URL}/leaves/types/${id}`,
-        { isActive: !isActive },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Re-using updateLeaveType for status toggle
+      await leavesService.updateLeaveType(id, { isActive: !isActive });
       setSuccess('Status updated');
       fetchData();
     } catch (err: any) {
@@ -305,7 +291,7 @@ export default function LeaveTypesPage() {
 
               <div className="flex gap-4">
                 <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
-{editingId ? 'Update' : 'Create'}
+                  {editingId ? 'Update' : 'Create'}
                 </button>
                 <button type="button" onClick={resetForm} className="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300">
                   Cancel

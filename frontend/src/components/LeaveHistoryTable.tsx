@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+import { getStatusColor, formatDate } from '@/lib/leaveUtils';
+
 interface LeaveRequest {
   _id: string;
   leaveTypeId: { name: string; code: string };
@@ -14,6 +16,7 @@ interface LeaveRequest {
 interface LeaveHistoryTableProps {
   requests: LeaveRequest[];
   onUpdate: () => void;
+  onCancel?: (id: string) => void;
 }
 
 export default function LeaveHistoryTable({ requests, onUpdate }: LeaveHistoryTableProps) {
@@ -38,20 +41,11 @@ export default function LeaveHistoryTable({ requests, onUpdate }: LeaveHistoryTa
   });
 
   const getStatusBadge = (status: string) => {
-    const styles = {
-      PENDING: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      APPROVED: 'bg-green-100 text-green-800 border-green-200',
-      REJECTED: 'bg-red-100 text-red-800 border-red-200',
-      CANCELLED: 'bg-gray-100 text-gray-800 border-gray-200',
-    };
-
     return (
       <span
-        className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-          styles[status as keyof typeof styles] || styles.PENDING
-        }`}
+        className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(status)}`}
       >
-        {status}
+        {status.replace('_', ' ')}
       </span>
     );
   };
@@ -103,6 +97,9 @@ export default function LeaveHistoryTable({ requests, onUpdate }: LeaveHistoryTa
             >
               Requested {sortField === 'createdAt' && (sortDirection === 'asc' ? '↑' : '↓')}
             </th>
+            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -115,8 +112,8 @@ export default function LeaveHistoryTable({ requests, onUpdate }: LeaveHistoryTa
                 <div className="text-sm text-gray-500">{request.leaveTypeId?.code}</div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <div>{new Date(request.dates.from).toLocaleDateString()}</div>
-                <div>{new Date(request.dates.to).toLocaleDateString()}</div>
+                <div>{formatDate(request.dates.from)}</div>
+                <div className="text-xs text-gray-400">to {formatDate(request.dates.to)}</div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                 {request.durationDays} days
@@ -125,7 +122,17 @@ export default function LeaveHistoryTable({ requests, onUpdate }: LeaveHistoryTa
                 {getStatusBadge(request.status)}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {new Date(request.createdAt).toLocaleDateString()}
+                {formatDate(request.createdAt)}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                {request.status === 'PENDING' && onCancel && (
+                  <button
+                    onClick={() => onCancel(request._id)}
+                    className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1 rounded-md transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
               </td>
             </tr>
           ))}

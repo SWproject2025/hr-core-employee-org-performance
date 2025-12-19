@@ -19,7 +19,6 @@ export default function RegisterPage() {
     middleName: '',
     lastName: '',
     nationalId: '',     
-    // candidateNumber: '',  <-- REMOVED (Backend will handle this)
     personalEmail: '', 
     password: '',
     mobilePhone: '',
@@ -35,21 +34,19 @@ export default function RegisterPage() {
     setForm({ ...form, [name]: value });
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // FIX: Remove empty optional fields so Mongoose doesn't complain about Enums
     const payload: any = {
       firstName: form.firstName,
       lastName: form.lastName,
       nationalId: form.nationalId,
       personalEmail: form.personalEmail,
-      email: form.personalEmail, // Send both to be safe
+      email: form.personalEmail,
       password: form.password,
     };
 
-    // Only add optional fields if they have values
     if (form.middleName) payload.middleName = form.middleName;
     if (form.mobilePhone) payload.mobilePhone = form.mobilePhone;
     if (form.gender) payload.gender = form.gender;
@@ -66,7 +63,6 @@ const handleSubmit = async (e: React.FormEvent) => {
     } finally {
       setLoading(false);
     }
-    
   };
 
   return (
@@ -85,7 +81,6 @@ const handleSubmit = async (e: React.FormEvent) => {
               <Input name="lastName" placeholder="Last Name *" onChange={handleChange} required />
             </div>
 
-            {/* National ID is the only unique ID the user provides */}
             <Input name="nationalId" placeholder="National ID *" onChange={handleChange} required />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -122,7 +117,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           
           <div className="mt-4 text-center text-sm">
             Already have an account?{' '}
-            <Link href="/employee/login" className="text-blue-600 hover:underline">
+            <Link href="/login" className="text-blue-600 hover:underline">
               Login here
             </Link>
           </div>
