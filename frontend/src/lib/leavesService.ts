@@ -28,6 +28,9 @@ async function apiCall<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Unauthorized');
+    }
     const error = await response.json().catch(() => ({ message: 'Request failed' }));
     throw new Error(error.message || `HTTP ${response.status}: ${response.statusText}`);
   }
@@ -282,6 +285,106 @@ export const leavesService = {
 
   // Get team members (for delegation dropdown)
   getTeamMembers: (managerId: string) => apiCall<any[]>(`/employee-profile/team/${managerId}`),
+
+  // ==================== CALENDAR ENDPOINTS ====================
+
+  // Get calendar for a year
+  getCalendar: (year: number) => apiCall<any>(`/leaves/admin/calendar/${year}`),
+
+  // Add holiday to calendar
+  addHoliday: (year: number, holiday: { date: string; name: string; description?: string }) =>
+    apiCall(`/leaves/admin/calendar/${year}/holidays`, {
+      method: 'POST',
+      body: JSON.stringify(holiday),
+    }),
+
+  // Delete holiday from calendar
+  deleteHoliday: (year: number, date: string) =>
+    apiCall(`/leaves/admin/calendar/${year}/holidays/${encodeURIComponent(date)}`, {
+      method: 'DELETE',
+    }),
+
+  // ==================== LEAVE TYPE MANAGEMENT ====================
+
+  // Update leave type
+  updateLeaveType: (id: string, data: any) =>
+    apiCall(`/leaves/admin/types/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // ==================== ADJUSTMENTS ====================
+
+  // Get all adjustments (for audit trail)
+  getAdjustments: (page = 1, limit = 20) => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+    });
+    return apiCall<{ adjustments: any[]; pagination: any }>(
+      `/leaves/admin/adjustments?${params}`
+    );
+  },
+
+  // ==================== DASHBOARD & STATISTICS ====================
+
+  // Get HR Dashboard statistics
+  getDashboardStats: () => apiCall<{
+    totalEmployees: number;
+    onLeaveToday: number;
+    approvedThisMonth: number;
+    pendingApprovals: number;
+    pendingHRReview: number;
+  }>('/leaves/admin/dashboard/stats'),
+
+  // Get team leave calendar (for managers)
+  getTeamCalendar: (startDate?: string, endDate?: string) => {
+    const params = new URLSearchParams();
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    return apiCall<{ teamMembers: any[]; leavesInPeriod: any[] }>(
+      `/leaves/team-calendar?${params}`
+    );
+  },
+
+  // ==================== OFFBOARDING & SETTLEMENT ====================
+
+  // Calculate final settlement for terminating employee
+  calculateFinalSettlement: (employeeId: string, dailySalaryRate: number) =>
+    apiCall<{
+      totalEncashment: number;
+      details: Array<{
+        leaveType: string;
+        remainingDays: number;
+        encashableDays: number;
+        encashmentAmount: number;
+      }>;
+    }>(`/leaves/admin/settlement/${employeeId}?dailySalaryRate=${dailySalaryRate}`),
+
+  // Process final settlement (zero out balances)
+  processFinalSettlement: (employeeId: string, dailySalaryRate: number) =>
+    apiCall(`/leaves/admin/settlement/${employeeId}/process`, {
+      method: 'POST',
+      body: JSON.stringify({ dailySalaryRate }),
+    }),
+
+  // Generate settlement report
+  getSettlementReport: (employeeId: string, dailySalaryRate: number) =>
+    apiCall<{ report: string }>(
+      `/leaves/admin/settlement/${employeeId}/report?dailySalaryRate=${dailySalaryRate}`
+    ),
+
+  // ==================== ANALYTICS ====================
+
+  // Get irregular leave patterns for an employee
+  getLeavePatterns: (employeeId: string) =>
+    apiCall<any[]>(`/leaves/admin/analytics/patterns/${employeeId}`),
+
+  // Acknowledge irregular leave pattern
+  acknowledgePattern: (patternId: string) =>
+    apiCall(`/leaves/admin/analytics/patterns/${patternId}/acknowledge`, {
+      method: 'PATCH',
+    }),
 };
 
 export default leavesService;

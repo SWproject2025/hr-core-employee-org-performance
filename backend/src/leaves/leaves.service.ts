@@ -38,6 +38,7 @@ import { EmailService } from '../Common/email/email.service';
 import { IntegrationService } from './services/integration.service';
 import { EmployeeProfileService } from '../employee-profile/employee-profile.service';
 import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
+import { LeaveSettlementService } from './services/leave-settlement.service';
 
 @Injectable()
 export class LeavesService {
@@ -60,6 +61,7 @@ export class LeavesService {
     private integrationService: IntegrationService,
     @Inject(forwardRef(() => EmployeeProfileService))
     private readonly employeeProfileService: EmployeeProfileService,
+    private readonly leaveSettlementService: LeaveSettlementService,
   ) {}
 
   // ==================== EMPLOYEE SERVICES ====================
@@ -759,49 +761,49 @@ export class LeavesService {
 
   // ==================== HELPER METHODS ====================
 
-  /**
+  /*
    * Calculate leave duration excluding weekends and holidays (BR 23)
    * Enhanced to properly fetch calendar holidays
    */
   private async calculateLeaveDuration(fromDate: Date, toDate: Date): Promise<number> {
-    let duration = 0;
     const currentDate = new Date(fromDate);
+    const currentYear = fromDate.getFullYear();
 
     // Get holidays for the period
-    const currentYear = fromDate.getFullYear();
     const calendar = await this.calendarModel.findOne({
       year: currentYear,
-    }).lean();
+    }).populate('holidays');
 
     const holidayDates = new Set<string>();
-    
-    if (calendar && calendar.blockedPeriods) {
-      // Extract holiday dates from calendar
-      calendar.blockedPeriods.forEach((period: any) => {
-        const periodStart = new Date(period.from);
-        const periodEnd = new Date(period.to);
-        
-        // Add all dates in the blocked period
-        const tempDate = new Date(periodStart);
-        while (tempDate <= periodEnd) {
+
+    if (calendar && calendar.holidays) {
+      calendar.holidays.forEach((holiday: any) => {
+        if (!holiday.startDate) return;
+
+        const start = new Date(holiday.startDate);
+        // If endDate is present, use it; otherwise assume 1 day
+        const end = holiday.endDate ? new Date(holiday.endDate) : new Date(holiday.startDate);
+
+        const tempDate = new Date(start);
+        while (tempDate <= end) {
           holidayDates.add(tempDate.toISOString().split('T')[0]);
           tempDate.setDate(tempDate.getDate() + 1);
         }
       });
     }
 
+    let duration = 0;
     while (currentDate <= toDate) {
       const dayOfWeek = currentDate.getDay();
       const dateString = currentDate.toISOString().split('T')[0];
 
       // Skip weekends (Saturday = 6, Sunday = 0)
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        // Skip holidays
+        // Skip Holidays
         if (!holidayDates.has(dateString)) {
-          duration++;
+           duration++;
         }
       }
-
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
@@ -1016,6 +1018,321 @@ export class LeavesService {
   private async syncLeaveToPayroll(request: any): Promise<void> {
     const leaveType = await this.leaveTypeModel.findById(request.leaveTypeId);
     await this.integrationService.syncToPayroll(request, leaveType);
+  }
+
+  /**
+   * Update leave type
+   */
+  async updateLeaveType(id: string, data: any): Promise<any> {
+    const leaveType = await this.leaveTypeModel.findById(id);
+    if (!leaveType) {
+      throw new NotFoundException('Leave type not found');
+    }
+
+    Object.assign(leaveType, data);
+    return leaveType.save();
+  }
+
+  /**
+   * Get all leave adjustments with pagination
+   */
+  async getAdjustments(filters?: { page?: number; limit?: number }): Promise<any> {
+    const { page = 1, limit = 20 } = filters || {};
+    const skip = (page - 1) * limit;
+
+    const [adjustments, total] = await Promise.all([
+      this.leaveAdjustmentModel
+        .find()
+        .populate('employeeId', 'firstName lastName employeeNumber')
+        .populate('leaveTypeId', 'code name')
+        .populate('hrUserId', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.leaveAdjustmentModel.countDocuments(),
+    ]);
+
+    return {
+      adjustments,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Get calendar by year
+   */
+  async getCalendarByYear(year: number): Promise<any> {
+    let calendar = await this.calendarModel.findOne({ year }).lean();
+    
+    if (!calendar) {
+      // Return empty calendar structure if not found
+      return {
+        year,
+        holidays: [],
+        blockedPeriods: [],
+      };
+    }
+
+    return calendar;
+  }
+
+  /**
+   * Add holiday to calendar
+   */
+  async addHoliday(year: number, holiday: { date: string; name: string; description?: string }): Promise<any> {
+    let calendar = await this.calendarModel.findOne({ year });
+    
+    if (!calendar) {
+      calendar = new this.calendarModel({
+        year,
+        holidays: [],
+        blockedPeriods: [],
+      });
+    }
+
+    // Check if holiday already exists
+    const existingIndex = (calendar.holidays || []).findIndex(
+      (h: any) => h.date === holiday.date
+    );
+
+    if (existingIndex >= 0) {
+      throw new BadRequestException('Holiday already exists for this date');
+    }
+
+    if (!calendar.holidays) {
+      calendar.holidays = [];
+    }
+    calendar.holidays.push(holiday as any);
+    
+    return calendar.save();
+  }
+
+  /**
+   * Delete holiday from calendar
+   */
+  async deleteHoliday(year: number, date: string): Promise<any> {
+    const calendar = await this.calendarModel.findOne({ year });
+    
+    if (!calendar) {
+      throw new NotFoundException('Calendar not found for this year');
+    }
+
+    const decodedDate = decodeURIComponent(date);
+    calendar.holidays = (calendar.holidays || []).filter(
+      (h: any) => h.date !== decodedDate
+    );
+
+    return calendar.save();
+  }
+
+  /**
+   * Check team scheduling conflict (BR 28 - team level)
+   */
+  async checkTeamConflict(employeeId: string, fromDate: Date, toDate: Date): Promise<{
+    hasConflict: boolean;
+    message?: string;
+    teamMembersOnLeave: number;
+    teamSize: number;
+  }> {
+    // Get employee's supervisor to find team members
+    const employee = await this.employeeProfileService.getProfile(employeeId);
+    if (!employee || !employee.supervisorPositionId) {
+      return { hasConflict: false, teamMembersOnLeave: 0, teamSize: 0 };
+    }
+
+    // Get all team members (peers - same supervisor)
+    // Using directReports from the supervisor's position holder
+    const supervisorId = employee.supervisorPositionId.toString();
+    let teamMembers: string[] = [];
+    try {
+      teamMembers = await this.integrationService.getDirectReports(supervisorId);
+    } catch {
+      // If we can't get team members, don't block the request
+      return { hasConflict: false, teamMembersOnLeave: 0, teamSize: 0 };
+    }
+
+    const teamSize = teamMembers.length;
+
+    if (teamSize <= 1) {
+      return { hasConflict: false, teamMembersOnLeave: 0, teamSize };
+    }
+
+    // Check how many are on leave during requested period
+    const overlappingLeaves = await this.leaveRequestModel.countDocuments({
+      employeeId: { $in: teamMembers.map((id: string) => new Types.ObjectId(id)) },
+      status: LeaveStatus.APPROVED,
+      $or: [
+        {
+          'dates.from': { $lte: toDate },
+          'dates.to': { $gte: fromDate },
+        },
+      ],
+    });
+
+    const threshold = 0.3; // 30% of team
+    const maxAllowed = Math.floor(teamSize * threshold);
+    const hasConflict = overlappingLeaves >= maxAllowed;
+
+    return {
+      hasConflict,
+      message: hasConflict
+        ? `Too many team members (${overlappingLeaves}/${teamSize}) already on leave during this period`
+        : undefined,
+      teamMembersOnLeave: overlappingLeaves,
+      teamSize,
+    };
+  }
+
+  /**
+   * Get HR Dashboard Statistics
+   * Provides real-time statistics for the HR admin dashboard
+   */
+  async getDashboardStats(): Promise<{
+    totalEmployees: number;
+    onLeaveToday: number;
+    approvedThisMonth: number;
+    pendingApprovals: number;
+    pendingHRReview: number;
+  }> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(today);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    // Get total employees (from entitlements as a proxy)
+    const totalEmployees = await this.leaveEntitlementModel.distinct('employeeId').then((ids) => ids.length);
+
+    // Get employees on leave today
+    const onLeaveToday = await this.leaveRequestModel.countDocuments({
+      status: LeaveStatus.APPROVED,
+      'dates.from': { $lte: endOfToday },
+      'dates.to': { $gte: today },
+    });
+
+    // Get leaves approved this month
+    const approvedThisMonth = await this.leaveRequestModel.countDocuments({
+      status: LeaveStatus.APPROVED,
+      updatedAt: { $gte: startOfMonth, $lte: endOfMonth },
+    });
+
+    // Get pending manager approvals
+    const pendingApprovals = await this.leaveRequestModel.countDocuments({
+      status: LeaveStatus.PENDING,
+      'approvalFlow.role': 'line_manager',
+      'approvalFlow.status': LeaveStatus.PENDING,
+    });
+
+    // Get pending HR review
+    const pendingHRReview = await this.leaveRequestModel.countDocuments({
+      'approvalFlow.role': 'hr_admin',
+      'approvalFlow.status': LeaveStatus.PENDING,
+    });
+
+    return {
+      totalEmployees,
+      onLeaveToday,
+      approvedThisMonth,
+      pendingApprovals,
+      pendingHRReview,
+    };
+  }
+
+  /**
+   * Get team leave calendar for managers
+   * Shows who is on leave and upcoming leaves for the team
+   */
+  async getTeamLeaveCalendar(managerId: string, startDate: Date, endDate: Date): Promise<{
+    teamMembers: any[];
+    leavesInPeriod: any[];
+  }> {
+    // Get direct reports
+    const directReports = await this.integrationService.getDirectReports(managerId);
+    
+    if (!directReports || directReports.length === 0) {
+      return { teamMembers: [], leavesInPeriod: [] };
+    }
+
+    const employeeIds = directReports.map((id: string) => new Types.ObjectId(id));
+
+    // Get team member details
+    const teamMembers = await Promise.all(
+      directReports.map(async (id: string) => {
+        try {
+          const profile = await this.employeeProfileService.getProfile(id);
+          return {
+            id,
+            firstName: profile?.firstName,
+            lastName: profile?.lastName,
+            employeeNumber: profile?.employeeNumber,
+          };
+        } catch {
+          return { id, firstName: 'Unknown', lastName: 'Employee' };
+        }
+      })
+    );
+
+    // Get approved leaves for the period
+    const leavesInPeriod = await this.leaveRequestModel
+      .find({
+        employeeId: { $in: employeeIds },
+        status: LeaveStatus.APPROVED,
+        $or: [
+          {
+            'dates.from': { $lte: endDate },
+            'dates.to': { $gte: startDate },
+          },
+        ],
+      })
+      .populate('leaveTypeId', 'code name')
+      .populate('employeeId', 'firstName lastName employeeNumber')
+      .lean();
+
+    return {
+      teamMembers,
+      leavesInPeriod,
+    };
+  }
+
+  // ==================== OFFBOARDING & SETTLEMENT ====================
+
+  /**
+   * Calculate final leave settlement for terminating employee
+   * OFF-013: Final settlement during offboarding
+   * BR 52, BR 53: Encashment calculation
+   */
+  async calculateFinalSettlement(employeeId: string, dailySalaryRate: number) {
+    return this.leaveSettlementService.calculateFinalSettlement(
+      employeeId,
+      dailySalaryRate,
+    );
+  }
+
+  /**
+   * Process final settlement (zero out balances)
+   * OFF-013: Complete leave settlement
+   */
+  async processFinalSettlement(employeeId: string) {
+    return this.leaveSettlementService.processFinalSettlement(employeeId);
+  }
+
+  /**
+   * Generate settlement report
+   * OFF-013: Generate settlement documentation
+   */
+  async generateSettlementReport(employeeId: string, dailySalaryRate: number) {
+    return this.leaveSettlementService.generateSettlementReport(
+      employeeId,
+      dailySalaryRate,
+    );
   }
 }
 

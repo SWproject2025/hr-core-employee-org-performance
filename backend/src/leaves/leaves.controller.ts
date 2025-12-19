@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -27,10 +28,15 @@ import {
 } from './dto/leave-request.dto';
 import { LeaveStatus } from './enums/leave-status.enum';
 
+import { PatternDetectionService } from './services/pattern-detection.service';
+
 @Controller('leaves')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LeavesController {
-  constructor(private readonly leavesService: LeavesService) {}
+  constructor(
+    private readonly leavesService: LeavesService,
+    private readonly patternDetectionService: PatternDetectionService
+  ) {}
 
   // ==================== EMPLOYEE ENDPOINTS ====================
 
@@ -479,11 +485,54 @@ export class LeavesController {
     @Body('holidays') holidays: any[],
     @Body('blockedPeriods') blockedPeriods?: any[],
   ) {
-    // Implementation would set up calendar
+    // Add each holiday to the calendar
+    const results: Array<{ date: string; status: string; reason?: string }> = [];
+    for (const holiday of holidays || []) {
+      try {
+        await this.leavesService.addHoliday(year, {
+          date: holiday.date,
+          name: holiday.name,
+          description: holiday.description,
+        });
+        results.push({ date: holiday.date, status: 'added' });
+      } catch (error) {
+        results.push({ date: holiday.date, status: 'skipped', reason: error.message });
+      }
+    }
+
     return {
       message: 'Calendar configured successfully',
       year,
+      holidaysProcessed: results,
     };
+  }
+
+  // ==================== DASHBOARD & STATISTICS ====================
+
+  /**
+   * Get HR Dashboard Statistics
+   * Provides real-time stats for HR admin dashboard
+   */
+  @Get('admin/dashboard/stats')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async getDashboardStats() {
+    return this.leavesService.getDashboardStats();
+  }
+
+  /**
+   * Get Team Leave Calendar (for Managers)
+   * Shows team members' leave schedule
+   */
+  @Get('team-calendar')
+  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async getTeamLeaveCalendar(
+    @CurrentUser() user: CurrentUserData,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    const start = new Date(startDate || new Date());
+    const end = new Date(endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)); // Default 30 days
+    return this.leavesService.getTeamLeaveCalendar(user.employeeProfileId, start, end);
   }
 
   // ==================== ANALYTICS ENDPOINTS ====================
@@ -497,16 +546,169 @@ export class LeavesController {
   async getLeavePatterns(
     @Param('employeeId') employeeId: string,
   ) {
-    // Pattern analysis: check Monday/Friday frequency
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    return this.patternDetectionService.getPatterns(employeeId);
+  }
 
-    // This would call the pattern detection service
+  /**
+   * Acknowledge irregular leave pattern
+   */
+  @Patch('admin/analytics/patterns/:patternId/acknowledge')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.DEPARTMENT_HEAD)
+  async acknowledgeLeavePattern(
+    @CurrentUser() user: CurrentUserData,
+    @Param('patternId') patternId: string,
+  ) {
+    return this.patternDetectionService.acknowledgePattern(patternId, user.employeeProfileId);
+  }
+
+  // ==================== CALENDAR ENDPOINTS ====================
+
+  /**
+   * Get calendar for a specific year
+   */
+  @Get('admin/calendar/:year')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  async getCalendarByYear(@Param('year') year: string) {
+    return this.leavesService.getCalendarByYear(parseInt(year, 10));
+  }
+
+  /**
+   * Add holiday to calendar
+   */
+  @Post('admin/calendar/:year/holidays')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  async addHoliday(
+    @Param('year') year: string,
+    @Body() holiday: { date: string; name: string; description?: string },
+  ) {
+    return this.leavesService.addHoliday(parseInt(year, 10), holiday);
+  }
+
+  /**
+   * Delete holiday from calendar
+   */
+  @Delete('admin/calendar/:year/holidays/:date')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  async deleteHoliday(
+    @Param('year') year: string,
+    @Param('date') date: string,
+  ) {
+    return this.leavesService.deleteHoliday(parseInt(year, 10), date);
+  }
+
+  // ==================== LEAVE TYPE MANAGEMENT ====================
+
+  /**
+   * Update leave type
+   */
+  @Put('admin/types/:id')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async updateLeaveType(
+    @Param('id') id: string,
+    @Body() updateData: any,
+  ) {
+    const leaveType = await this.leavesService.updateLeaveType(id, updateData);
     return {
+      message: 'Leave type updated successfully',
+      leaveType,
+    };
+  }
+
+  // ==================== ADJUSTMENTS ====================
+
+  /**
+   * Get all adjustments with pagination
+   */
+  @Get('admin/adjustments')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async getAdjustments(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.leavesService.getAdjustments({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+    });
+  }
+
+  // ==================== TEAM CONFLICT CHECK ====================
+
+  /**
+   * Check team scheduling conflicts
+   */
+  @Post('check-team-conflict')
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  async checkTeamConflict(
+    @CurrentUser() user: CurrentUserData,
+    @Body('fromDate') fromDate: string,
+    @Body('toDate') toDate: string,
+  ) {
+    return this.leavesService.checkTeamConflict(
+      user.employeeProfileId,
+      new Date(fromDate),
+      new Date(toDate),
+    );
+  }
+
+  // ==================== OFFBOARDING & SETTLEMENT ====================
+
+  /**
+   * Calculate final leave settlement for terminating employee
+   * OFF-013: Final settlement during offboarding
+   * BR 52, BR 53: Encashment calculation
+   */
+  @Get('admin/settlement/:employeeId')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async calculateFinalSettlement(
+    @Param('employeeId') employeeId: string,
+    @Query('dailySalaryRate') dailySalaryRate: string,
+  ) {
+    return this.leavesService.calculateFinalSettlement(
       employeeId,
-      analysisStartDate: threeMonthsAgo.toISOString(),
-      analysisEndDate: new Date().toISOString(),
-      message: 'Use PatternDetectionService.detectIrregularPatterns() for full analysis',
+      parseFloat(dailySalaryRate) || 0,
+    );
+  }
+
+  /**
+   * Process final settlement (zero out balances after encashment)
+   * OFF-013: Complete leave settlement during offboarding
+   */
+  @Post('admin/settlement/:employeeId/process')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async processFinalSettlement(
+    @Param('employeeId') employeeId: string,
+    @Body('dailySalaryRate') dailySalaryRate: number,
+  ) {
+    // First calculate the settlement
+    const settlement = await this.leavesService.calculateFinalSettlement(
+      employeeId,
+      dailySalaryRate,
+    );
+
+    // Then zero out the balances
+    await this.leavesService.processFinalSettlement(employeeId);
+
+    return {
+      message: 'Final settlement processed successfully',
+      settlement,
+    };
+  }
+
+  /**
+   * Generate settlement report for documentation
+   * OFF-013: Generate settlement documentation
+   */
+  @Get('admin/settlement/:employeeId/report')
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  async generateSettlementReport(
+    @Param('employeeId') employeeId: string,
+    @Query('dailySalaryRate') dailySalaryRate: string,
+  ) {
+    return {
+      report: await this.leavesService.generateSettlementReport(
+        employeeId,
+        parseFloat(dailySalaryRate) || 0,
+      ),
     };
   }
 }
