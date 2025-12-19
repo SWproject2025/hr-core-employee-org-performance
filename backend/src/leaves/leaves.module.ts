@@ -44,6 +44,8 @@ import { EmailModule } from '../Common/email/email.module';
 import { LeaveSettlementService } from './services/leave-settlement.service';
 import { OrganizationStructureModule } from '../organization-structure/organization-structure.module';
 
+import { LeavePattern, LeavePatternSchema } from './models/leave-pattern.schema';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -58,6 +60,7 @@ import { OrganizationStructureModule } from '../organization-structure/organizat
       { name: LeaveAttachment.name, schema: LeaveAttachmentSchema },
       { name: LeaveBlockPeriod.name, schema: LeaveBlockPeriodSchema },
       { name: LeaveDelegation.name, schema: LeaveDelegationSchema },
+      { name: LeavePattern.name, schema: LeavePatternSchema },
     ]),
     EmployeeProfileModule,
     TimeManagementModule,

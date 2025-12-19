@@ -200,6 +200,37 @@ async function bootstrap() {
         status: 'ACTIVE',
         dateOfHire: defaultHireDate, // ✅ REQUIRED
       },
+      // ==================== LEAVES SUBSYSTEM USERS ====================
+      {
+        firstName: 'David',
+        lastName: 'Manager',
+        nationalId: '5678901234567',
+        workEmail: 'david.manager@company.com',
+        personalEmail: 'david.manager.personal@gmail.com',
+        password: '123456',
+        status: 'ACTIVE',
+        dateOfHire: defaultHireDate,
+      },
+      {
+        firstName: 'Alice',
+        lastName: 'HRAdmin',
+        nationalId: '6789012345678',
+        workEmail: 'alice.hradmin@company.com',
+        personalEmail: 'alice.hradmin.personal@gmail.com',
+        password: '123456',
+        status: 'ACTIVE',
+        dateOfHire: defaultHireDate,
+      },
+      {
+        firstName: 'Bob',
+        lastName: 'HRManager',
+        nationalId: '7890123456789',
+        workEmail: 'bob.hrmanager@company.com',
+        personalEmail: 'bob.hrmanager.personal@gmail.com',
+        password: '123456',
+        status: 'ACTIVE',
+        dateOfHire: defaultHireDate,
+      },
     ];
 
     const createdEmployees = [];
@@ -242,6 +273,22 @@ async function bootstrap() {
         employee: createdEmployees[3],
         roles: ['DEPARTMENT_EMPLOYEE'],
         description: 'Department Employee - John Doe',
+      },
+      // ==================== LEAVES SUBSYSTEM ROLES ====================
+      {
+        employee: createdEmployees[4],
+        roles: ['DEPARTMENT_HEAD'],
+        description: 'Department Head/Manager - David Manager',
+      },
+      {
+        employee: createdEmployees[5],
+        roles: ['HR_ADMIN'],
+        description: 'HR Admin - Alice HRAdmin',
+      },
+      {
+        employee: createdEmployees[6],
+        roles: ['HR_MANAGER'],
+        description: 'HR Manager - Bob HRManager',
       },
     ];
 

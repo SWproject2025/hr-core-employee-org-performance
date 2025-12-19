@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import leavesService from '@/lib/leavesService';
 
 interface LeaveCategory {
   _id: string;
@@ -28,11 +26,8 @@ export default function LeaveCategoriesPage() {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/leaves/admin/categories`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setCategories(response.data || []);
+      const data = await leavesService.getLeaveCategories();
+      setCategories((data as any) || []);
     } catch (err: any) {
       setError('Failed to load categories');
     } finally {
@@ -46,24 +41,19 @@ export default function LeaveCategoriesPage() {
     setSuccess('');
 
     try {
-      const token = localStorage.getItem('token');
       if (editingId) {
         // Update
-        await axios.put(`${API_URL}/leaves/admin/categories/${editingId}`, formData, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await leavesService.updateLeaveCategory(editingId, formData);
         setSuccess('Category updated successfully');
       } else {
         // Create
-        await axios.post(`${API_URL}/leaves/admin/categories`, formData, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await leavesService.createLeaveCategory(formData);
         setSuccess('Category created successfully');
       }
       fetchCategories();
       resetForm();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Operation failed');
+      setError(err.message || 'Operation failed');
     }
   };
 
@@ -77,14 +67,11 @@ export default function LeaveCategoriesPage() {
     if (!confirm('Are you sure you want to delete this category?')) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/leaves/admin/categories/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await leavesService.deleteLeaveCategory(id);
       setSuccess('Category deleted successfully');
       fetchCategories();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Delete failed');
+      setError(err.message || 'Delete failed');
     }
   };
 

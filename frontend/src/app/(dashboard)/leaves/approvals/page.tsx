@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import leavesService from '@/lib/leavesService';
+import RoleGuard from '@/components/RoleGuard';
+import { ROLES } from '@/lib/roles';
 
-export default function LeaveApprovalsPage() {
+function LeaveApprovalsContent() {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
@@ -224,5 +226,14 @@ export default function LeaveApprovalsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Export wrapped with RoleGuard
+export default function LeaveApprovalsPage() {
+  return (
+    <RoleGuard allowedRoles={[ROLES.DEPARTMENT_HEAD, ROLES.HR_ADMIN, ROLES.HR_MANAGER]}>
+      <LeaveApprovalsContent />
+    </RoleGuard>
   );
 }

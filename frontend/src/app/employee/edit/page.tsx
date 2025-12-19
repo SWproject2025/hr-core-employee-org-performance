@@ -1,33 +1,39 @@
 "use client"
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authFetch } from '../../../lib/auth'; // Adjust path if needed
+import { useAuth } from '@/context/AuthContext'; // 👈 Use Context
+import axios from 'axios'; // 👈 Use Axios
 import toast from 'react-hot-toast';
 
 export default function EditProfilePage() {
   const router = useRouter();
+  const { token, isLoading: authLoading } = useAuth(); // Get auth state
   const [loading, setLoading] = useState(true);
   
   // Form State
   const [formData, setFormData] = useState({
     mobilePhone: '',
     personalEmail: '',
-    // Add address fields here if your DB schema supports them
   });
 
   // 1. Load Current Data
   useEffect(() => {
+    if (authLoading) return;
+    if (!token) {
+        router.push('/login');
+        return;
+    }
+
     const loadProfile = async () => {
       try {
-        const res = await authFetch('http://localhost:3000/employee-profile/me');
-        if (res.ok) {
-          const data = await res.json();
-          // Pre-fill form with existing data
-          setFormData({
-            mobilePhone: data.profile.mobilePhone || '',
-            personalEmail: data.profile.personalEmail || '',
-          });
-        }
+        const res = await axios.get('http://localhost:3000/employee-profile/me');
+        const data = res.data;
+        
+        // Pre-fill form with existing data
+        setFormData({
+          mobilePhone: data.profile.mobilePhone || '',
+          personalEmail: data.profile.personalEmail || '',
+        });
       } catch (err) {
         console.error(err);
         toast.error("Failed to load profile data");
@@ -36,32 +42,23 @@ export default function EditProfilePage() {
       }
     };
     loadProfile();
-  }, []);
+  }, [authLoading, token, router]);
 
   // 2. Handle Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await authFetch('http://localhost:3000/employee-profile/me/contact', {
-        method: 'PATCH', // matches the endpoint we just made
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
+      await axios.patch('http://localhost:3000/employee-profile/me/contact', formData);
 
-      if (res.ok) {
-        toast.success("Profile Updated Successfully!");
-        router.push('/employee/profile'); // Go back to profile
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.message || "Update failed");
-      }
-    } catch (err) {
+      toast.success("Profile Updated Successfully!");
+      router.push('/employee/profile'); // Go back to profile
+    } catch (err: any) {
       console.error(err);
-      toast.error("Connection error");
+      toast.error(err.response?.data?.message || "Update failed");
     }
   };
 
-  if (loading) return <div className="p-10 text-center">Loading...</div>;
+  if (authLoading || loading) return <div className="p-10 text-center">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
