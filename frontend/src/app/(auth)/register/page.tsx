@@ -1,13 +1,14 @@
 "use client";
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import { useAuth } from '@/context/AuthContext'; // 👈 Import Context
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import { Building2, User, FileText, Mail, Phone, Lock, ArrowRight, ChevronDown } from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { register } = useAuth(); // 👈 Use register from Context
   const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -22,7 +23,6 @@ export default function RegisterPage() {
     maritalStatus: '',
   });
 
-  // Handle Input Change
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -31,38 +31,35 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
 
-    // 1. Prepare Payload (Map to Backend expectations)
-    const payload: any = {
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      nationalId: formData.nationalId,
-      personalEmail: formData.personalEmail,
-      workEmail: formData.personalEmail, // Send personal as work email initially if required
-      password: formData.password,
-    };
-
-    // Only add optional fields if they have values
-    if (formData.middleName) payload.middleName = formData.middleName;
-    if (formData.mobilePhone) payload.mobilePhone = formData.mobilePhone;
-    if (formData.gender) payload.gender = formData.gender;
-    if (formData.maritalStatus) payload.maritalStatus = formData.maritalStatus;
-
     try {
-      // 2. Call API
-      // Adjust URL if your API is on a different port
-      await axios.post('http://localhost:3000/auth/register', payload);
+      // 👈 Call context register function
+      await register({
+        firstName: formData.firstName,
+        middleName: formData.middleName,
+        lastName: formData.lastName,
+        nationalId: formData.nationalId,
+        email: formData.personalEmail, // Map personalEmail to email
+        password: formData.password,
+        mobilePhone: formData.mobilePhone,
+        gender: formData.gender,
+        maritalStatus: formData.maritalStatus
+      });
       
       toast.success('Registration successful! Please login.');
       router.push('/login');
       
     } catch (error: any) {
-      console.error(error);
-      const message = error.response?.data?.message || 'Registration failed';
-      // Handle array of errors (common in NestJS) or single string
-      if (Array.isArray(message)) {
-        message.forEach(msg => toast.error(msg));
+      console.error("Registration Error:", error);
+      
+      // Error handling
+      const message = error.message || 'Registration failed';
+      
+      if (message.includes('exists')) {
+         toast.error("Account or details already exist.");
+      } else if (Array.isArray(message)) {
+         message.forEach(msg => toast.error(msg));
       } else {
-        toast.error(message);
+         toast.error(message);
       }
     } finally {
       setLoading(false);
@@ -72,7 +69,7 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen flex bg-gray-50">
       
-      {/* Left Side: Branding (Hidden on mobile) */}
+      {/* Left Side: Branding */}
       <div className="hidden lg:flex lg:w-1/3 bg-gradient-to-br from-blue-600 to-indigo-800 p-12 flex-col justify-between text-white relative overflow-hidden">
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-8">
@@ -82,16 +79,13 @@ export default function RegisterPage() {
           <h2 className="text-4xl font-bold mb-4">Join Our Team</h2>
           <p className="text-blue-100">Create your employee profile to get started.</p>
         </div>
-        
-        {/* Abstract Shapes */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-white/10 blur-3xl"></div>
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 rounded-full bg-blue-500/20 blur-3xl"></div>
       </div>
 
-      {/* Right Side: Scrollable Form */}
+      {/* Right Side: Form */}
       <div className="w-full lg:w-2/3 flex justify-center p-6 overflow-y-auto">
         <div className="w-full max-w-2xl my-auto">
-          
           <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-gray-900">Candidate Registration</h1>
@@ -100,7 +94,6 @@ export default function RegisterPage() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               
-              {/* Name Section */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">First Name *</label>
@@ -116,7 +109,6 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* ID Section */}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">National ID *</label>
                 <div className="relative">
@@ -125,7 +117,6 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Demographics */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative">
                    <label className="text-sm font-medium text-gray-700 mb-1 block">Gender</label>
@@ -149,7 +140,6 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Contact Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">Personal Email *</label>
@@ -167,7 +157,6 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Password */}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Password *</label>
                 <div className="relative">
@@ -181,14 +170,7 @@ export default function RegisterPage() {
                 disabled={loading}
                 className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition shadow-md flex items-center justify-center gap-2 mt-6"
               >
-                {loading ? (
-                  <span>Submitting...</span>
-                ) : (
-                  <>
-                    Submit Application
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
+                {loading ? 'Submitting...' : <>Submit Application <ArrowRight className="h-4 w-4" /></>}
               </button>
 
             </form>
@@ -201,7 +183,6 @@ export default function RegisterPage() {
                 </Link>
               </p>
             </div>
-
           </div>
         </div>
       </div>
