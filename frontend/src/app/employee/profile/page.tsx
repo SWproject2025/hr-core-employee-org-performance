@@ -1,52 +1,79 @@
 "use client"
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authFetch, logout } from '../../../lib/auth';
-import toast from 'react-hot-toast';
+import { useAuth } from '@/context/AuthContext';
+import axios from 'axios';
+import { LayoutDashboard } from 'lucide-react'; // Added icon
 
 export default function EmployeeProfilePage() {
   const router = useRouter();
+  const { token, logout, isLoading: authLoading } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [roleData, setRoleData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
     const loadProfile = async () => {
       try {
-        const res = await authFetch('http://localhost:3000/employee-profile/me');
-        if (!res.ok) {
-           // If 401/403, kick them out
+        const res = await axios.get('http://localhost:3000/employee-profile/me');
+        setProfile(res.data.profile || res.data);
+        setRoleData(res.data.role);
+      } catch (error: any) {
+        console.error("Profile Fetch Error:", error);
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
            logout();
            router.push('/login');
-           return;
         }
-        const data = await res.json();
-        setProfile(data.profile);
-        setRoleData(data.role);
-      } catch (error) {
-        console.error(error);
       } finally {
         setLoading(false);
       }
     };
+
     loadProfile();
-  }, [router]);
+  }, [router, token, authLoading, logout]);
 
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
 
-  if (loading) return <div className="p-10 text-center">Loading Profile...</div>;
+  // Helper to check if user should see Admin button
+  const isAdminOrManager = () => {
+    if (!profile && !roleData) return false;
+    
+    // Check direct role on profile (from your manual MongoDB insert)
+    if (profile?.role === 'ADMIN') return true;
+
+    // Check system roles (from Seed script)
+    if (roleData?.roles) {
+      return roleData.roles.some((r: string) => 
+        r.includes('ADMIN') || r.includes('MANAGER') || r.includes('SPECIALIST')
+      );
+    }
+    return false;
+  };
+
+  if (authLoading || loading) return (
+    <div className="flex items-center justify-center min-h-screen text-blue-600 font-medium">
+       Loading Profile...
+    </div>
+  );
+
   if (!profile) return <div className="p-10 text-center text-red-500">Profile not found.</div>;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 1. TOP NAVIGATION BAR (Logout Button Added) */}
       <nav className="bg-blue-900 text-white p-4 shadow flex justify-between items-center">
         <div className="font-bold text-xl tracking-wide">HR Portal</div>
         <div className="flex items-center gap-4">
-           <span className="text-sm opacity-90">Welcome, {profile.firstName}</span>
+           <span className="text-sm opacity-90 hidden sm:block">Welcome, {profile.firstName}</span>
            <button 
              onClick={handleLogout} 
              className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded text-sm font-bold transition shadow-sm"
@@ -57,13 +84,12 @@ export default function EmployeeProfilePage() {
       </nav>
 
       <div className="max-w-5xl mx-auto p-6">
-        
         {/* Header Card */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 flex items-center justify-between relative overflow-hidden">
           <div className="bg-blue-600 absolute top-0 left-0 w-full h-2"></div>
           <div className="flex items-center gap-6">
-            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center text-2xl font-bold text-gray-500">
-              {profile.firstName.charAt(0)}{profile.lastName.charAt(0)}
+            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center text-2xl font-bold text-gray-500 uppercase">
+              {profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-800">{profile.firstName} {profile.lastName}</h1>
@@ -78,19 +104,18 @@ export default function EmployeeProfilePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
           {/* Left Column: Details */}
           <div className="md:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Contact Information</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-gray-400 uppercase font-bold">Work Email</label>
-                  <p className="text-gray-700">{profile.workEmail || 'Not Assigned'}</p>
+                  <p className="text-gray-700 break-words">{profile.workEmail || 'Not Assigned'}</p>
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 uppercase font-bold">Personal Email</label>
-                  <p className="text-gray-700">{profile.personalEmail}</p>
+                  <p className="text-gray-700 break-words">{profile.personalEmail}</p>
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 uppercase font-bold">Mobile</label>
@@ -106,27 +131,36 @@ export default function EmployeeProfilePage() {
 
           {/* Right Column: Actions & Roles */}
           <div className="space-y-6">
-            
-            {/* 2. ACTIONS CARD (Submit Request Button Added) */}
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="font-bold text-gray-800 mb-4">Quick Actions</h3>
               <div className="space-y-3">
+                
+                {/* 👇 ADMIN DASHBOARD BUTTON (Only shows if Admin/Manager) */}
+                {isAdminOrManager() && (
+                  <button 
+                    onClick={() => router.push('/admin')} 
+                    className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 transition shadow font-medium flex items-center justify-center gap-2 mb-2"
+                  >
+                    <LayoutDashboard size={18} />
+                    Go to Admin Dashboard
+                  </button>
+                )}
+
                 <button 
-                  onClick={() => alert("This feature will open the Leave Request form.")} 
+                  onClick={() => router.push('/employee/request')} 
                   className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition shadow font-medium"
                 >
                   + Submit Leave Request
                 </button>
                 <button 
-                 onClick={() => router.push('/employee/profile/edit')} // 👈 UPDATED LINK
+                 onClick={() => router.push('/employee/edit')} 
                  className="w-full bg-white border border-gray-300 text-gray-700 py-2 rounded hover:bg-gray-50 transition font-medium"
                 >
-            Edit My Profile
+                 Edit My Profile
               </button>
               </div>
             </div>
 
-            {/* System Roles Display */}
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="font-bold text-gray-800 mb-2">System Roles</h3>
               {roleData?.roles && roleData.roles.length > 0 ? (
@@ -142,7 +176,6 @@ export default function EmployeeProfilePage() {
               )}
             </div>
           </div>
-
         </div>
       </div>
     </div>

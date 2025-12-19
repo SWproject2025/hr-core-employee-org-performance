@@ -10,10 +10,19 @@ interface User {
   lastName?: string;
 }
 
+interface RegisterData {
+  firstName: string;
+  lastName: string;
+  nationalId: string;
+  email: string;
+  password: string;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>; // Added Register
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -29,8 +38,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // 1. Load User/Token from LocalStorage on App Start
   useEffect(() => {
-    // Check for stored token on mount
     if (typeof window !== 'undefined') {
       const storedToken = localStorage.getItem('token');
       const storedUser = localStorage.getItem('user');
@@ -49,9 +58,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // 2. CRITICAL FIX: Attach Token to Axios Headers whenever it changes
+  useEffect(() => {
+    if (token) {
+      // Apply to every request
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      // Remove if no token
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [token]);
+
   const login = async (email: string, password: string) => {
     try {
-      // ✅ FIXED: Changed backticks to parentheses
       const response = await axios.post(`${API_URL}/auth/login`, {
         email,
         password,
@@ -64,7 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Decode JWT token to get user info
-      // JWT format: header.payload.signature
       const tokenParts = access_token.split('.');
       if (tokenParts.length !== 3) {
         throw new Error('Invalid token format');
@@ -72,7 +90,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const payload = JSON.parse(atob(tokenParts[1]));
       
-      // Extract user info from token payload
       const userInfo: User = {
         employeeProfileId: payload.employeeProfileId || payload.sub || '',
         email: payload.email || email,
@@ -84,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(access_token);
       setUser(userInfo);
 
-      // Store in localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', access_token);
         localStorage.setItem('user', JSON.stringify(userInfo));
@@ -95,9 +111,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // 3. Added Register Function
+  const register = async (data: RegisterData) => {
+    try {
+      // Map frontend fields to backend expectations
+      // Assuming backend expects "workEmail" or "personalEmail" - adjust if needed
+      const payload = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        nationalId: data.nationalId,
+        workEmail: data.email, // Using email as workEmail for registration
+        personalEmail: data.email, // Or personalEmail, depending on your backend validation
+        password: data.password,
+        // Default values if backend requires them:
+        gender: 'MALE', 
+        maritalStatus: 'SINGLE',
+        mobilePhone: '01000000000' 
+      };
+
+      await axios.post(`${API_URL}/auth/register`, payload);
+      
+      // We don't auto-login here, we let the user log in after registering
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      throw new Error(error.response?.data?.message || 'Registration failed');
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
+    delete axios.defaults.headers.common['Authorization']; // Clear header immediately
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -115,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         login,
+        register, // Export register
         logout,
         isAuthenticated: !!user && !!token,
         isLoading,

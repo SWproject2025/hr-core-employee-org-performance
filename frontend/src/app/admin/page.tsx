@@ -1,11 +1,14 @@
 "use client"
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authFetch, logout } from '../../lib/auth';
+import { useAuth } from '@/context/AuthContext'; // 👈 Use the Context
+import axios from 'axios'; // 👈 Use Axios
 import toast from 'react-hot-toast';
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const { token, logout, isLoading: authLoading } = useAuth(); // Get auth state
+  
   const [employees, setEmployees] = useState<any[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
@@ -13,15 +16,22 @@ export default function AdminDashboard() {
 
   // 1. Load Data Function
   useEffect(() => {
+    // Wait for AuthContext to initialize
+    if (authLoading) return;
+
+    // If no token, redirect to login immediately
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
     const loadAdminData = async () => {
       try {
         // A. Verify Who Is Logged In
-        const meRes = await authFetch('http://localhost:3000/employee-profile/me');
-        if (!meRes.ok) throw new Error('Auth failed');
-        const meData = await meRes.json();
+        const meRes = await axios.get('http://localhost:3000/employee-profile/me');
+        const meData = meRes.data;
         
-        // B. CHECK ROLES (The Fix)
-        // We convert everything to lowercase to avoid "HR Admin" vs "HR ADMIN" issues
+        // B. CHECK ROLES
         const userRoles = meData.role?.roles || [];
         const allowedRoles = ['admin', 'hr admin', 'system admin', 'hr manager'];
         
@@ -33,43 +43,41 @@ export default function AdminDashboard() {
           return;
         }
 
-        // C. Fetch Dashboard Data
-        const empRes = await authFetch('http://localhost:3000/employee-profile/search?q=a');
-        if (empRes.ok) setEmployees(await empRes.json());
+        // C. Fetch Dashboard Data (Parallel requests for speed)
+        // We use Promise.allSettled so one failure doesn't break everything
+        const [empRes, candRes, reqRes] = await Promise.allSettled([
+           axios.get('http://localhost:3000/employee-profile/search?q=a'),
+           axios.get('http://localhost:3000/employee-profile/candidates'),
+           axios.get('http://localhost:3000/employee-profile/requests/pending')
+        ]);
 
-        const candRes = await authFetch('http://localhost:3000/employee-profile/candidates');
-        if (candRes.ok) setCandidates(await candRes.json());
-
-        const reqRes = await authFetch('http://localhost:3000/employee-profile/requests/pending');
-        if (reqRes.ok) setRequests(await reqRes.json());
+        if (empRes.status === 'fulfilled') setEmployees(empRes.value.data);
+        if (candRes.status === 'fulfilled') setCandidates(candRes.value.data);
+        if (reqRes.status === 'fulfilled') setRequests(reqRes.value.data);
 
         setLoading(false);
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
-        router.push('/login');
+        if (err.response?.status === 401) {
+            logout();
+            router.push('/login');
+        } else {
+            toast.error("Failed to load dashboard data");
+        }
       }
     };
     loadAdminData();
-  }, [router]);
+  }, [router, token, authLoading, logout]);
 
   // 2. Status Update (Hire/Reject)
   const updateStatus = async (id: string, status: 'HIRED' | 'REJECTED') => {
     try {
-      const res = await fetch(`http://localhost:3000/employee-profile/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-
-      if (res.ok) {
-        toast.success(`Candidate ${status.toLowerCase()} successfully!`);
-        setCandidates(prev => prev.map(c => c._id === id ? { ...c, status } : c));
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.message || "Failed");
-      }
-    } catch (error) {
-      toast.error("Connection Error");
+      await axios.patch(`http://localhost:3000/employee-profile/${id}/status`, { status });
+      
+      toast.success(`Candidate ${status.toLowerCase()} successfully!`);
+      setCandidates(prev => prev.map(c => c._id === id ? { ...c, status } : c));
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Connection Error");
     }
   };
 
@@ -78,44 +86,29 @@ export default function AdminDashboard() {
     if (!confirm("Are you sure you want to convert this candidate to an Employee?")) return;
 
     try {
-      const res = await fetch(`http://localhost:3000/employee-profile/${id}/promote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (res.ok) {
-        toast.success("Onboarded successfully! Candidate removed.");
-        setCandidates(prev => prev.filter(c => c._id !== id));
-      } else {
-        const data = await res.json();
-        toast.error(data.message || "Promotion failed");
-      }
-    } catch (error) {
-      toast.error("Connection failed");
+      await axios.post(`http://localhost:3000/employee-profile/${id}/promote`);
+      
+      toast.success("Onboarded successfully! Candidate removed.");
+      setCandidates(prev => prev.filter(c => c._id !== id));
+      // Optionally refresh employees list here
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Promotion failed");
     }
   };
 
   // 4. Handle Request (Approve/Reject)
   const handleRequestAction = async (requestId: string, action: 'APPROVED' | 'REJECTED') => {
     try {
-      const res = await fetch(`http://localhost:3000/employee-profile/request/${requestId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: action }),
-      });
+      await axios.patch(`http://localhost:3000/employee-profile/request/${requestId}/status`, { status: action });
 
-      if (res.ok) {
-        toast.success(`Request marked as ${action}`);
-        setRequests(prev => prev.filter(req => req._id !== requestId));
-      } else {
-        toast.error("Failed to update request");
-      }
+      toast.success(`Request marked as ${action}`);
+      setRequests(prev => prev.filter(req => req._id !== requestId));
     } catch (error) {
       toast.error("Connection error");
     }
   };
 
-  if (loading) return <div className="p-10 text-center">Loading Dashboard...</div>;
+  if (authLoading || loading) return <div className="p-10 text-center">Loading Dashboard...</div>;
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
