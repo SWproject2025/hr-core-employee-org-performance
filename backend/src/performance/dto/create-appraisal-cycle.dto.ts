@@ -1,38 +1,45 @@
+// src/performance/dto/create-appraisal-cycle.dto.ts
+
 import { AppraisalTemplateType } from '../enums/performance.enums';
 
 export class CycleTemplateAssignmentDto {
-  // AppraisalTemplate _id
   templateId: string;
-
-  // Departments this template applies to in this cycle
   departmentIds?: string[];
 }
 
-// 🔹 New: seed data for auto-creating assignments
+/**
+ * Used to auto-create AppraisalAssignment records
+ * when creating or activating a cycle
+ */
 export class SeedAssignmentDto {
-  employeeProfileId: string;   // EmployeeProfile _id
-  managerProfileId: string;    // Manager's EmployeeProfile _id
-  templateId: string;          // AppraisalTemplate _id
+  employeeProfileId: string;
+  managerProfileId: string;
+  templateId: string;
+
+  // REQUIRED (schema enforces this)
+  departmentId: string;
+
+  positionId?: string;
+  dueDate?: string;
 }
 
 export class CreateAppraisalCycleDto {
   name: string;
   description?: string;
 
-  // Annual / Probationary / etc.
   cycleType: AppraisalTemplateType;
 
-  // Dates as ISO strings – Mongoose will cast to Date
   startDate: string;
   endDate: string;
 
-  // Optional deadlines
   managerDueDate?: string;
   employeeAcknowledgementDueDate?: string;
 
-  // Mapping between templates and departments within this cycle
   templateAssignments?: CycleTemplateAssignmentDto[];
 
-  // 🔹 New: optional seed list to auto-create AppraisalAssignment records
+  /**
+   * Optional seed data (for testing / demos)
+   * Real systems usually auto-generate on activate
+   */
   seedingAssignments?: SeedAssignmentDto[];
 }

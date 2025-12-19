@@ -14,12 +14,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // This attaches user data to req.user
-    return { 
-      userId: payload.sub, 
-      employeeProfileId: payload.employeeProfileId || payload.sub,
-      email: payload.email, 
-      roles: payload.roles || [],
-    };
+  // payload.sub is usually the userId from auth.service.ts login()
+  return { userId: payload.sub, email: payload.email, role: payload.role };
   }
 }

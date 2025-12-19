@@ -1,116 +1,112 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import * as bcrypt from 'bcrypt';
+
+// Import Schemas
 import { EmployeeProfile } from '../employee-profile/models/employee-profile.schema';
-import { EmployeeSystemRole } from '../employee-profile/models/employee-system-role.schema';
-import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
+import { Candidate } from '../employee-profile/models/candidate.schema';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(EmployeeProfile.name) private employeeModel: Model<EmployeeProfile>,
-    @InjectModel(EmployeeSystemRole.name) private systemRoleModel: Model<EmployeeSystemRole>,
+    @InjectModel(Candidate.name) private candidateModel: Model<Candidate>,
     private jwtService: JwtService,
-  ) { }
+  ) {}
 
-  // 1. Validate User Credentials
-  async validateUser(email: string, pass: string): Promise<any> {
-    // Try to find user by workEmail first, then personalEmail
-    const user = await this.employeeModel.findOne({
-      $or: [
-        { workEmail: email },
-        { personalEmail: email },
-      ],
-    }).select('+password');
-
-    if (!user || !user.password) {
-      return null;
-    }
-
-    const isPasswordValid = await bcrypt.compare(pass, user.password);
-    if (!isPasswordValid) {
-      return null;
-    }
-
-    // Get user roles from EmployeeSystemRole collection
-    const systemRole = await this.systemRoleModel.findOne({
-      employeeProfileId: user._id,
-      isActive: true,
-    }).exec();
-
-    const roles = systemRole?.roles || [];
-
-    const { password, ...result } = user.toObject();
-    return {
-      ...result,
-      roles,
-      employeeProfileId: user._id.toString(),
-    };
-  }
-
-  // 2. Login (Generate Token)
-  async login(user: any) {
-    const email = user.workEmail || user.personalEmail || '';
-    const payload = {
-      email,
-      sub: user._id,
-      employeeProfileId: user.employeeProfileId || user._id.toString(),
-      roles: user.roles || [],
-    };
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
-  }
-
-  // 3. Register (Optional helper for seeding/testing)
+  // --- 1. Register (Create New Candidate) ---
   async register(registerDto: any) {
-    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    const { email, password, firstName, lastName, nationalId, mobilePhone } = registerDto;
 
-    // Generate unique employee number
-    const employeeNumber = await this.generateEmployeeNumber();
-
-    // Set dateOfHire to current date if not provided
-    const dateOfHire = registerDto.dateOfHire ? new Date(registerDto.dateOfHire) : new Date();
-
-    const newUser = new this.employeeModel({
-      ...registerDto,
-      password: hashedPassword,
-      employeeNumber,
-      dateOfHire,
-      status: registerDto.status || EmployeeStatus.ACTIVE, // Default to ACTIVE if not provided
+    // A. Check if email exists in Employees
+    const existingEmployee = await this.employeeModel.findOne({ 
+      $or: [{ workEmail: email }, { personalEmail: email }] 
     });
-    return newUser.save();
+    if (existingEmployee) throw new ConflictException('Email already exists');
+
+    // B. Check if email exists in Candidates
+    const existingCandidate = await this.candidateModel.findOne({ personalEmail: email });
+    if (existingCandidate) throw new ConflictException('Email already exists');
+
+    // C. Hash Password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ✅ D. Generate Candidate Number (CRITICAL FIX)
+    const candidateNumber = `CAN-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // E. Create Candidate
+    const newCandidate = new this.candidateModel({
+      firstName,
+      lastName,
+      personalEmail: email,
+      password: hashedPassword,
+      nationalId: nationalId, // Required by Schema
+      candidateNumber: candidateNumber, // <--- This was missing!
+      mobilePhone: mobilePhone || '',
+      status: 'APPLIED',
+      applicationDate: new Date()
+    });
+
+    await newCandidate.save();
+
+    return { message: 'Registration successful. You can now login.' };
   }
 
-  // Helper method to generate unique employee number
-  private async generateEmployeeNumber(): Promise<string> {
-    // Find all employees with EMP-XXX pattern
-    const employees = await this.employeeModel
-      .find({ employeeNumber: { $regex: /^EMP-\d+$/ } })
-      .select('employeeNumber')
-      .exec();
+  // --- 2. Validate User (Universal Login) ---
+  async validateUser(email: string, pass: string): Promise<any> {
+    let user: any = null;
+    let userType = '';
 
-    if (!employees || employees.length === 0) {
-      // If no employees exist, start with EMP-001
-      return 'EMP-001';
-    }
+    // A. Check EMPLOYEE Collection
+    user = await this.employeeModel.findOne({
+      $or: [
+        { workEmail: email }, 
+        { personalEmail: email }
+      ]
+    }).select('+password'); 
 
-    // Extract numbers and find the maximum
-    let maxNumber = 0;
-    for (const emp of employees) {
-      const match = emp.employeeNumber?.match(/^EMP-(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNumber) {
-          maxNumber = num;
-        }
+    if (user) {
+      userType = 'EMPLOYEE';
+    } 
+    // B. Check CANDIDATE Collection
+    else {
+      user = await this.candidateModel.findOne({ personalEmail: email }).select('+password');
+      if (user) {
+        userType = 'CANDIDATE';
       }
     }
 
-    // Increment and format
-    const nextNumber = maxNumber + 1;
-    return `EMP-${nextNumber.toString().padStart(3, '0')}`;
+    if (!user) return null;
+
+    // C. Check Password
+    const isMatch = await bcrypt.compare(pass, user.password);
+    if (isMatch) {
+      const { password, ...result } = user.toObject();
+      return { ...result, userType };
+    }
+
+    return null;
+  }
+
+  // --- 3. Login (Generate Token) ---
+  async login(user: any) {
+    const payload = { 
+      email: user.personalEmail || user.workEmail, 
+      sub: user._id,
+      type: user.userType 
+    };
+
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.workEmail || user.personalEmail,
+        type: user.userType
+      }
+    };
   }
 }

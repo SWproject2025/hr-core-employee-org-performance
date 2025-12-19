@@ -43,6 +43,7 @@ import { ResolveDisputeDto } from './dto/ResolveDisputeDto';
 
 import {
   AppraisalAssignmentStatus,
+  AppraisalCycleStatus,
   AppraisalDisputeStatus,
   AppraisalRecordStatus,
 } from './enums/performance.enums';
@@ -88,9 +89,28 @@ export class PerformanceService {
   }
 
   async updateTemplate(id: string, dto: UpdateAppraisalTemplateDto) {
-    return this.templateModel
-      .findByIdAndUpdate(id, dto, { new: true })
+    return this.templateModel.findByIdAndUpdate(id, dto, { new: true }).exec();
+  }
+
+  // ✅ NEW: Delete template (with safety check)
+  async removeTemplate(id: string) {
+    const usedInAssignments = await this.assignmentModel
+      .exists({ templateId: id as any })
       .exec();
+
+    if (usedInAssignments) {
+      throw new BadRequestException(
+        'Cannot delete template: it is used in appraisal assignments.',
+      );
+    }
+
+    const deleted = await this.templateModel.findByIdAndDelete(id).exec();
+
+    if (!deleted) {
+      throw new NotFoundException('Template not found');
+    }
+
+    return { message: 'Template deleted successfully', id };
   }
 
   // =======================
@@ -107,10 +127,14 @@ export class PerformanceService {
       managerDueDate: dto.managerDueDate,
       employeeAcknowledgementDueDate: dto.employeeAcknowledgementDueDate,
       templateAssignments: dto.templateAssignments ?? [],
+      status: AppraisalCycleStatus.PLANNED,
     });
 
     if (dto.seedingAssignments && dto.seedingAssignments.length > 0) {
-      await this.createAssignmentsForCycleFromSeed(cycle, dto.seedingAssignments);
+      await this.createAssignmentsForCycleFromSeed(
+        cycle,
+        dto.seedingAssignments,
+      );
     }
 
     return cycle;
@@ -124,17 +148,115 @@ export class PerformanceService {
     return this.cycleModel.findById(id).exec();
   }
 
+  async activateCycle(cycleId: string) {
+    const cycle = await this.cycleModel.findById(cycleId).exec();
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.status !== AppraisalCycleStatus.PLANNED) {
+      throw new BadRequestException(
+        `Only PLANNED cycles can be activated. Current: ${cycle.status}`,
+      );
+    }
+
+    cycle.status = AppraisalCycleStatus.ACTIVE;
+    await cycle.save();
+    return cycle;
+  }
+
+  async publishCycle(cycleId: string) {
+    const cycle = await this.cycleModel.findById(cycleId).exec();
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.status !== AppraisalCycleStatus.ACTIVE) {
+      throw new BadRequestException(
+        `Only ACTIVE cycles can be published. Current: ${cycle.status}`,
+      );
+    }
+
+    const submittedAssignments = await this.assignmentModel
+      .find({
+        cycleId: cycle._id,
+        status: AppraisalAssignmentStatus.SUBMITTED,
+      })
+      .exec();
+
+    for (const a of submittedAssignments) {
+      await this.publishAppraisal(String(a._id));
+    }
+
+    cycle.status = AppraisalCycleStatus.PUBLISHED;
+    // @ts-ignore
+    cycle.publishedAt = new Date();
+    await cycle.save();
+
+    return { publishedCount: submittedAssignments.length };
+  }
+
+  async closeCycle(cycleId: string) {
+    const cycle = await this.cycleModel.findById(cycleId).exec();
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.status !== AppraisalCycleStatus.PUBLISHED) {
+      throw new BadRequestException(
+        `Only PUBLISHED cycles can be closed. Current: ${cycle.status}`,
+      );
+    }
+
+    cycle.status = AppraisalCycleStatus.CLOSED;
+    // @ts-ignore
+    cycle.closedAt = new Date();
+    await cycle.save();
+
+    return cycle;
+  }
+
+  async archiveCycle(cycleId: string) {
+    const cycle = await this.cycleModel.findById(cycleId).exec();
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.status !== AppraisalCycleStatus.CLOSED) {
+      throw new BadRequestException(
+        `Only CLOSED cycles can be archived. Current: ${cycle.status}`,
+      );
+    }
+
+    cycle.status = AppraisalCycleStatus.ARCHIVED;
+    // @ts-ignore
+    cycle.archivedAt = new Date();
+    await cycle.save();
+
+    await this.recordModel.updateMany(
+      { cycleId: cycle._id },
+      { $set: { status: AppraisalRecordStatus.ARCHIVED } },
+    );
+
+    return cycle;
+  }
+
   private async createAssignmentsForCycleFromSeed(
     cycle: AppraisalCycleDocument,
     seeds: SeedAssignmentDto[],
   ) {
     if (!seeds || seeds.length === 0) return;
 
+    for (const seed of seeds) {
+      // @ts-ignore
+      if (!seed.departmentId) {
+        throw new BadRequestException(
+          'seedingAssignments[].departmentId is required (AppraisalAssignment schema requires departmentId).',
+        );
+      }
+    }
+
     const docs = seeds.map((seed) => ({
       cycleId: cycle._id,
       templateId: seed.templateId,
       employeeProfileId: seed.employeeProfileId,
       managerProfileId: seed.managerProfileId,
+
+      // @ts-ignore
+      departmentId: seed.departmentId,
+
       status: AppraisalAssignmentStatus.NOT_STARTED,
     }));
 
@@ -145,10 +267,7 @@ export class PerformanceService {
   // MANAGER VIEW – ASSIGNMENTS
   // =======================
 
-  async getAssignmentsForManager(
-    managerProfileId: string,
-    cycleId?: string,
-  ) {
+  async getAssignmentsForManager(managerProfileId: string, cycleId?: string) {
     const filter: FilterQuery<AppraisalAssignmentDocument> = {
       managerProfileId,
     };
@@ -185,23 +304,38 @@ export class PerformanceService {
   // MANAGER SUBMISSION
   // =======================
 
-  async submitManagerAppraisal(
-    assignmentId: string,
-    dto: SubmitAppraisalDto,
-  ) {
-    const assignment = await this.assignmentModel
-      .findById(assignmentId)
-      .exec();
+  async submitManagerAppraisal(assignmentId: string, dto: SubmitAppraisalDto) {
+    const assignment = await this.assignmentModel.findById(assignmentId).exec();
 
     if (!assignment) {
       throw new NotFoundException('Appraisal assignment not found');
+    }
+
+    const cycle = await this.cycleModel.findById(assignment.cycleId).exec();
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.status !== AppraisalCycleStatus.ACTIVE) {
+      throw new BadRequestException(
+        `Cannot submit appraisal: cycle is not ACTIVE. Current: ${cycle.status}`,
+      );
+    }
+
+    if (cycle.managerDueDate) {
+      const now = new Date();
+      if (now > new Date(cycle.managerDueDate)) {
+        throw new BadRequestException(
+          `Manager due date has passed: ${new Date(
+            cycle.managerDueDate,
+          ).toISOString()}`,
+        );
+      }
     }
 
     if (
       ![
         AppraisalAssignmentStatus.NOT_STARTED,
         AppraisalAssignmentStatus.IN_PROGRESS,
-        AppraisalAssignmentStatus.SUBMITTED, // allow resubmit if needed
+        AppraisalAssignmentStatus.SUBMITTED,
       ].includes(assignment.status)
     ) {
       throw new BadRequestException(
@@ -296,10 +430,7 @@ export class PerformanceService {
   // EMPLOYEE VIEW – APPRAISALS
   // =======================
 
-  async getAppraisalsForEmployee(
-    employeeProfileId: string,
-    cycleId?: string,
-  ) {
+  async getAppraisalsForEmployee(employeeProfileId: string, cycleId?: string) {
     const filter: FilterQuery<AppraisalAssignmentDocument> = {
       employeeProfileId,
     };
@@ -350,6 +481,20 @@ export class PerformanceService {
       );
     }
 
+    const cycle = await this.cycleModel.findById(assignment.cycleId).exec();
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.employeeAcknowledgementDueDate) {
+      const now = new Date();
+      if (now > new Date(cycle.employeeAcknowledgementDueDate)) {
+        throw new BadRequestException(
+          `Acknowledgement due date has passed: ${new Date(
+            cycle.employeeAcknowledgementDueDate,
+          ).toISOString()}`,
+        );
+      }
+    }
+
     assignment.status = AppraisalAssignmentStatus.ACKNOWLEDGED;
     // @ts-ignore
     assignment.employeeAcknowledgedAt = new Date();
@@ -367,9 +512,7 @@ export class PerformanceService {
     employeeProfileId: string,
     dto: SubmitDisputeDto,
   ) {
-    const assignment = await this.assignmentModel
-      .findById(assignmentId)
-      .exec();
+    const assignment = await this.assignmentModel.findById(assignmentId).exec();
 
     if (!assignment) {
       throw new NotFoundException('Appraisal assignment not found');
@@ -383,6 +526,15 @@ export class PerformanceService {
     ) {
       throw new BadRequestException(
         `Cannot dispute appraisal in status: ${assignment.status}`,
+      );
+    }
+
+    const cycle = await this.cycleModel.findById(assignment.cycleId).exec();
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.status !== AppraisalCycleStatus.PUBLISHED) {
+      throw new BadRequestException(
+        `Disputes are only allowed when cycle is PUBLISHED. Current: ${cycle.status}`,
       );
     }
 

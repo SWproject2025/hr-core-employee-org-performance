@@ -43,9 +43,10 @@ describe('EmployeeProfileService', () => {
     expect(service).toBeDefined();
   });
 
-  it('should update contact info', async () => {
+it('should update contact info', async () => {
     const empId = '64f1b2b8e3b9c8a1b2c3d4e5'; 
-    const updateDto = { phoneNumber: '555-0199' };
+    // FIX: Change 'phoneNumber' to 'mobilePhone' to match your DTO
+    const updateDto = { mobilePhone: '555-0199' }; 
     
     // Mock the Profile Update to succeed
     employeeModel.findByIdAndUpdate.mockReturnValue({
@@ -62,4 +63,4 @@ describe('EmployeeProfileService', () => {
       { new: true }
     );
   });
-});
+})

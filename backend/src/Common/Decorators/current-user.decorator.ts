@@ -10,14 +10,9 @@ export interface CurrentUserData {
 
 export const CurrentUser = createParamDecorator(
   (data: unknown, ctx: ExecutionContext): CurrentUserData => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const request = ctx.switchToHttp().getRequest();
-    // This comes from your JWT strategy
-    // Ensure employeeProfileId is always set (fallback to userId)
-    const user = request.user || {};
-    return {
-      ...user,
-      employeeProfileId: user.employeeProfileId || user.userId || user.sub,
-      userId: user.userId || user.sub || user.employeeProfileId,
-    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
+    return request.user; // This comes from your JWT strategy
   },
 );
