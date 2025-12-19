@@ -23,8 +23,23 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import CreateRunModal from '@/components/CreateRunModal';
+import { useAuth } from '@/context/AuthContext'; // Import the auth context
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
+// System roles enum (should match backend)
+const SystemRole = {
+  PAYROLL_SPECIALIST: 'PAYROLL_SPECIALIST',
+  PAYROLL_MANAGER: 'PAYROLL_MANAGER',
+  FINANCE_STAFF: 'FINANCE_STAFF',
+};
+
+// Case-insensitive role check helper
+const hasRoleCaseInsensitive = (userRoles, targetRole) => {
+  if (!userRoles || !Array.isArray(userRoles)) return false;
+  const targetLower = targetRole.toLowerCase();
+  return userRoles.some(role => role?.toLowerCase() === targetLower);
+};
 
 // Edit Run Modal Component
 const EditRunModal = ({ run, onClose, onSuccess }) => {
@@ -38,7 +53,9 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const canEdit = run?.status === 'DRAFT' || run?.status === 'REJECTED';
+  // Normalize status to uppercase for comparison
+  const normalizedStatus = (run?.status || '').toUpperCase();
+  const canEdit = normalizedStatus === 'DRAFT' || normalizedStatus === 'REJECTED';
 
   const handleSubmit = async () => {
     if (!formData.payrollPeriod) {
@@ -106,7 +123,7 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
               <div className="flex-1">
                 <p className="font-semibold text-amber-900">Limited Editing</p>
                 <p className="text-sm text-amber-800 mt-1">
-                  This run is in <strong>{run?.status}</strong> status. Only DRAFT or REJECTED runs can be edited.
+                  This run is in <strong>{normalizedStatus}</strong> status. Only DRAFT or REJECTED runs can be edited.
                 </p>
               </div>
             </div>
@@ -173,16 +190,16 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
           <div className="pt-2 pb-2 px-4 bg-slate-50 rounded-xl border border-slate-200">
             <p className="text-xs font-medium text-slate-600 mb-2">Current Status</p>
             <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-              run?.status === 'DRAFT' ? 'bg-slate-200 text-slate-800' :
-              run?.status === 'REJECTED' ? 'bg-red-200 text-red-800' :
-              run?.status === 'UNDER_REVIEW' ? 'bg-amber-200 text-amber-800' :
-              run?.status === 'PENDING_MANAGER_APPROVAL' ? 'bg-orange-200 text-orange-800' :
-              run?.status === 'PENDING_FINANCE_APPROVAL' ? 'bg-yellow-200 text-yellow-800' :
-              run?.status === 'APPROVED' ? 'bg-emerald-200 text-emerald-800' :
-              run?.status === 'LOCKED' ? 'bg-purple-200 text-purple-800' :
+              normalizedStatus === 'DRAFT' ? 'bg-slate-200 text-slate-800' :
+              normalizedStatus === 'REJECTED' ? 'bg-red-200 text-red-800' :
+              normalizedStatus === 'UNDER_REVIEW' ? 'bg-amber-200 text-amber-800' :
+              normalizedStatus === 'PENDING_MANAGER_APPROVAL' ? 'bg-orange-200 text-orange-800' :
+              normalizedStatus === 'PENDING_FINANCE_APPROVAL' ? 'bg-yellow-200 text-yellow-800' :
+              normalizedStatus === 'APPROVED' ? 'bg-emerald-200 text-emerald-800' :
+              normalizedStatus === 'LOCKED' ? 'bg-purple-200 text-purple-800' :
               'bg-blue-200 text-blue-800'
             }`}>
-              {run?.status?.replace(/_/g, ' ') || 'Unknown'}
+              {normalizedStatus?.replace(/_/g, ' ') || 'Unknown'}
             </span>
           </div>
 
@@ -219,6 +236,8 @@ const EditRunModal = ({ run, onClose, onSuccess }) => {
 
 const AllRunsPage = () => {
   const router = useRouter();
+  const { user, hasRole, isAuthenticated, isLoading: authLoading } = useAuth(); // Use auth context
+  
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -231,9 +250,17 @@ const AllRunsPage = () => {
   const [selectedRun, setSelectedRun] = useState(null);
   const [notification, setNotification] = useState(null);
 
+  // Check if user has specific roles (case-insensitive)
+  const userRoles = user?.roles || [];
+  const isPayrollSpecialist = hasRoleCaseInsensitive(userRoles, 'PAYROLL_SPECIALIST');
+  const isPayrollManager = hasRoleCaseInsensitive(userRoles, 'PAYROLL_MANAGER');
+  const isFinanceStaff = hasRoleCaseInsensitive(userRoles, 'FINANCE_STAFF');
+
   useEffect(() => {
-    fetchPayrollRuns();
-  }, [filters.status, filters.entity]);
+    if (!authLoading) {
+      fetchPayrollRuns();
+    }
+  }, [filters.status, filters.entity, authLoading]);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -248,7 +275,11 @@ const AllRunsPage = () => {
       if (filters.status) params.append('status', filters.status);
       if (filters.entity) params.append('entity', filters.entity);
 
-      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs?${params}`);
+      const response = await fetch(`${API_URL}/payroll-execution/payroll-runs?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        }
+      });
       if (!response.ok) throw new Error('Failed to fetch payroll runs');
       
       const data = await response.json();
@@ -271,8 +302,22 @@ const AllRunsPage = () => {
   };
 
   const handleEditRun = (run) => {
+    // Only allow Payroll Specialists to edit
+    if (!isPayrollSpecialist) {
+      showNotification('Only Payroll Specialists can edit payroll runs', 'error');
+      return;
+    }
     setSelectedRun(run);
     setShowEditModal(true);
+  };
+
+  const handleCreateRun = () => {
+    // Only allow Payroll Specialists to create
+    if (!isPayrollSpecialist) {
+      showNotification('Only Payroll Specialists can create new payroll runs', 'error');
+      return;
+    }
+    setShowCreateModal(true);
   };
 
   const handleViewRun = (runId) => {
@@ -280,6 +325,9 @@ const AllRunsPage = () => {
   };
 
   const getStatusBadge = (status) => {
+    // Normalize status to uppercase for comparison
+    const normalizedStatus = (status || '').toUpperCase();
+    
     const statusMap = {
       'DRAFT': { class: 'bg-slate-100 text-slate-700 border-slate-200', label: 'Draft', icon: FileText },
       'UNDER_REVIEW': { class: 'bg-amber-100 text-amber-700 border-amber-200', label: 'Under Review', icon: Eye },
@@ -291,7 +339,7 @@ const AllRunsPage = () => {
       'UNLOCKED': { class: 'bg-blue-100 text-blue-700 border-blue-200', label: 'Unlocked', icon: Unlock }
     };
 
-    const config = statusMap[status] || { class: 'bg-slate-100 text-slate-700 border-slate-200', label: status, icon: FileText };
+    const config = statusMap[normalizedStatus] || { class: 'bg-slate-100 text-slate-700 border-slate-200', label: status, icon: FileText };
     const Icon = config.icon;
     
     return (
@@ -304,39 +352,66 @@ const AllRunsPage = () => {
 
   const getQuickActions = (run) => {
     const actions = [];
+    
+    // Always add View Details as a base action
+    const viewAction = { label: 'View Details', icon: Eye, color: 'blue', action: () => handleViewRun(run._id) };
 
-    switch (run.status) {
+    // Normalize status to uppercase for comparison
+    const status = (run.status || '').toUpperCase();
+
+    switch (status) {
       case 'DRAFT':
-        actions.push(
-          { label: 'Edit', icon: Edit, color: 'slate', action: () => handleEditRun(run) },
-          { label: 'Review Pre-runs', icon: CheckCircle, color: 'purple', action: () => router.push(`/runs/${run._id}/pre-runs`) },
-          { label: 'Start Processing', icon: PlayCircle, color: 'blue', action: () => router.push(`/runs/${run._id}/initiate`) }
-        );
+        // Only Payroll Specialists can edit DRAFT runs
+        if (isPayrollSpecialist) {
+          actions.push(
+            { label: 'Edit Period', icon: Edit, color: 'slate', action: () => handleEditRun(run) },
+            { label: 'Review Pre-runs', icon: CheckCircle, color: 'purple', action: () => router.push(`/runs/${run._id}/draft`) },
+          );
+        }
+        actions.push(viewAction);
         break;
       
       case 'UNDER_REVIEW':
-        actions.push(
-          { label: 'View Details', icon: Eye, color: 'blue', action: () => handleViewRun(run._id) },
-          { label: 'Review Draft', icon: FileText, color: 'amber', action: () => router.push(`/runs/${run._id}/review`) },
-          { label: 'Exceptions', icon: AlertTriangle, color: 'orange', action: () => router.push(`/runs/${run._id}/exceptions`) }
-        );
+        if (isPayrollSpecialist) {
+          actions.push(
+            { label: 'Review Draft', icon: FileText, color: 'amber', action: () => router.push(`/runs/${run._id}/review`) },
+            { label: 'Exceptions', icon: AlertTriangle, color: 'orange', action: () => router.push(`/runs/${run._id}/exceptions`) }
+          );
+        }
+        actions.push(viewAction);
         break;
       
       case 'PENDING_MANAGER_APPROVAL':
+        if (isPayrollManager) {
+          actions.push(
+            { label: 'Approval Panel', icon: CheckCircle, color: 'green', action: () => router.push(`/runs/${run._id}/approvals`) }
+          );
+        }
+        actions.push(viewAction);
+        break;
+      
       case 'PENDING_FINANCE_APPROVAL':
-        actions.push(
-          { label: 'View Details', icon: Eye, color: 'blue', action: () => handleViewRun(run._id) },
-          { label: 'Approval Panel', icon: CheckCircle, color: 'green', action: () => router.push(`/runs/${run._id}/approvals`) }
-        );
+        if (isFinanceStaff) {
+          actions.push(
+            { label: 'Approval Panel', icon: CheckCircle, color: 'green', action: () => router.push(`/runs/${run._id}/approvals`) }
+          );
+        }
+        actions.push(viewAction);
         break;
       
       case 'APPROVED':
-      case 'LOCKED':
         actions.push(
-          { label: 'View Details', icon: Eye, color: 'blue', action: () => handleViewRun(run._id) },
-          { label: 'View Payslips', icon: FileText, color: 'green', action: () => router.push(`/runs/${run._id}/payslips`) }
+          viewAction,
+          { label: 'View Payslips', icon: FileText, color: 'green', action: () => router.push(`/payslips`) }
         );
-        if (run.status === 'LOCKED') {
+        break;
+      
+      case 'LOCKED':
+        actions.push(viewAction);
+        actions.push(
+          { label: 'View Payslips', icon: FileText, color: 'green', action: () => router.push(`/payslips`) }
+        );
+        if (isPayrollManager || isFinanceStaff) {
           actions.push(
             { label: 'Unlock', icon: Unlock, color: 'red', action: () => router.push(`/runs/${run._id}/unlock`) }
           );
@@ -344,16 +419,17 @@ const AllRunsPage = () => {
         break;
       
       case 'REJECTED':
-        actions.push(
-          { label: 'Edit & Restart', icon: Edit, color: 'slate', action: () => handleEditRun(run) },
-          { label: 'View Details', icon: Eye, color: 'blue', action: () => handleViewRun(run._id) }
-        );
+        // Only Payroll Specialists can edit rejected runs
+        if (isPayrollSpecialist) {
+          actions.push(
+            { label: 'Edit & Restart', icon: Edit, color: 'slate', action: () => handleEditRun(run) }
+          );
+        }
+        actions.push(viewAction);
         break;
       
       default:
-        actions.push(
-          { label: 'View Details', icon: Eye, color: 'blue', action: () => handleViewRun(run._id) }
-        );
+        actions.push(viewAction);
     }
 
     return actions;
@@ -370,6 +446,20 @@ const AllRunsPage = () => {
     totalNetPay: runs.reduce((sum, r) => sum + (r.totalnetpay || 0), 0)
   };
 
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative mx-auto w-16 h-16">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-200 border-t-blue-600" />
+          </div>
+          <p className="mt-4 text-slate-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
@@ -379,14 +469,38 @@ const AllRunsPage = () => {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold text-slate-900">Payroll Runs</h1>
               <p className="text-slate-600">Manage and track all payroll processing cycles</p>
+              {/* Show current user role */}
+              {user && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-slate-500">Logged in as:</span>
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                    {user.roles?.join(', ') || 'No Role'}
+                  </span>
+                  {isPayrollSpecialist && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                      ✓ Can Edit & Create
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-blue-700 hover:to-indigo-700 transition shadow-lg hover:shadow-xl font-medium"
-            >
-              <Plus size={20} />
-              Create New Run
-            </button>
+            {/* Only show Create button for Payroll Specialists */}
+            {isPayrollSpecialist ? (
+              <button
+                onClick={handleCreateRun}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-blue-700 hover:to-indigo-700 transition shadow-lg hover:shadow-xl font-medium"
+              >
+                <Plus size={20} />
+                Create New Run
+              </button>
+            ) : (
+              <div className="px-4 py-3 bg-slate-100 rounded-xl border border-slate-200">
+                <p className="text-sm text-slate-600 flex items-center gap-2">
+                  <Lock size={16} />
+                  Only Payroll Specialists can create runs
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -407,6 +521,22 @@ const AllRunsPage = () => {
             }`}>
               {notification.message}
             </p>
+          </div>
+        )}
+
+        {/* Role-based info banner */}
+        {!isPayrollSpecialist && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-blue-600 mt-0.5 flex-shrink-0" size={20} />
+              <div>
+                <p className="font-semibold text-blue-900">Limited Access</p>
+                <p className="text-sm text-blue-800 mt-1">
+                  You are viewing payroll runs as a <strong>{user?.roles?.join(', ') || 'viewer'}</strong>. 
+                  Only Payroll Specialists can create new runs or edit existing run periods.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -582,7 +712,8 @@ const AllRunsPage = () => {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex gap-2">
-                            {actions.slice(0, 2).map((action, idx) => {
+                            {/* Show all actions for better visibility */}
+                            {actions.map((action, idx) => {
                               const ActionIcon = action.icon;
                               return (
                                 <button
@@ -603,15 +734,6 @@ const AllRunsPage = () => {
                                 </button>
                               );
                             })}
-                            {actions.length > 2 && (
-                              <button
-                                onClick={() => handleViewRun(run._id)}
-                                className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all hover:scale-105"
-                                title="View all actions"
-                              >
-                                <Eye size={16} />
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -624,20 +746,23 @@ const AllRunsPage = () => {
         </div>
       </div>
 
-      {/* Modals */}
-      {showCreateModal && (
+      {/* Modals - Only render for Payroll Specialists */}
+      {showCreateModal && isPayrollSpecialist && (
         <CreateRunModal
           onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
+          onSuccess={(createdRun) => {
             setShowCreateModal(false);
-            router.push(`/runs/${run.runId || run._id}/draft`);
             showNotification('Payroll run created successfully!');
             fetchPayrollRuns();
+            // Navigate to the newly created run
+            if (createdRun?.runId || createdRun?._id) {
+              router.push(`/runs/${createdRun.runId || createdRun._id}/draft`);
+            }
           }}
         />
       )}
 
-      {showEditModal && selectedRun && (
+      {showEditModal && selectedRun && isPayrollSpecialist && (
         <EditRunModal
           run={selectedRun}
           onClose={() => {

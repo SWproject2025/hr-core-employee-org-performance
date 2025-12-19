@@ -313,7 +313,7 @@ const PreRunApprovalsPage = () => {
                 onSelectAll={selectAll}
                 onApprove={(id: string) => handleApprove(id, 'bonus')}
                 onReject={(id: string) => handleReject(id, 'bonus')}
-                onEdit={(item: Bonus) => openEditModal(item, 'bonus')}
+                onEdit={(item) => openEditModal(item, 'bonus')}
               />
             ) : (
               <BenefitsTable
@@ -323,7 +323,7 @@ const PreRunApprovalsPage = () => {
                 onSelectAll={selectAll}
                 onApprove={(id: string) => handleApprove(id, 'benefit')}
                 onReject={(id: string) => handleReject(id, 'benefit')}
-                onEdit={(item: Benefit) => openEditModal(item, 'benefit')}
+                onEdit={(item) => openEditModal(item, 'benefit')}
               />
             )}
           </div>

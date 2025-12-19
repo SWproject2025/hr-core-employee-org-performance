@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import leavesService from '@/lib/leavesService';
 
 interface Holiday {
   date: string;
@@ -32,11 +30,8 @@ export default function CalendarManagementPage() {
   const fetchCalendar = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/leaves/admin/calendar/${year}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setCalendar(response.data);
+      const data = await leavesService.getCalendar(year);
+      setCalendar(data);
     } catch (err: any) {
       setError('Failed to load calendar');
     } finally {
@@ -50,18 +45,13 @@ export default function CalendarManagementPage() {
     setSuccess('');
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(
-        `${API_URL}/leaves/admin/calendar/${year}/holidays`,
-        { holidays: [formData] },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await leavesService.addHoliday(year, formData);
       setSuccess('Holiday added successfully');
       setFormData({ date: '', name: '', description: '' });
       setShowForm(false);
       fetchCalendar();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to add holiday');
+      setError(err.message || 'Failed to add holiday');
     }
   };
 
@@ -69,15 +59,11 @@ export default function CalendarManagementPage() {
     if (!confirm('Delete this holiday?')) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/leaves/admin/calendar/${year}/holidays`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { date },
-      });
+      await leavesService.deleteHoliday(year, date);
       setSuccess('Holiday deleted');
       fetchCalendar();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Delete failed');
+      setError(err.message || 'Delete failed');
     }
   };
 

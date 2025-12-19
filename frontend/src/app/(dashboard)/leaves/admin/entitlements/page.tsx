@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import leavesService from '@/lib/leavesService';
 
 interface Entitlement {
   _id: string;
@@ -42,17 +40,14 @@ export default function EntitlementsManagementPage() {
   const fetchEntitlements = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const params: any = { page, limit: 20 };
-      if (filter.employeeId) params.employeeId = filter.employeeId;
-      if (filter.leaveTypeId) params.leaveTypeId = filter.leaveTypeId;
-
-      const response = await axios.get(`${API_URL}/leaves/admin/entitlements`,{
-        headers: { Authorization: `Bearer ${token}` },
-        params,
-      });
-      setEntitlements(response.data.entitlements || []);
-      setTotalPages(response.data.pagination?.totalPages || 1);
+      const response = await leavesService.getAllEntitlements(
+        filter.employeeId,
+        filter.leaveTypeId,
+        page,
+        20
+      );
+      setEntitlements(response.entitlements || []);
+      setTotalPages(response.pagination?.totalPages || 1);
     } catch (err: any) {
       console.error('Failed to load entitlements:', err);
     } finally {
@@ -73,17 +68,12 @@ export default function EntitlementsManagementPage() {
     if (!selectedEnt) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_URL}/leaves/admin/entitlements/${selectedEnt._id}`,
-        editForm,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await leavesService.updateEntitlement(selectedEnt._id, editForm);
       alert('Entitlement updated successfully');
       setShowEditModal(false);
       fetchEntitlements();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Update failed');
+      alert(err.message || 'Update failed');
     }
   };
 
